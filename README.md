@@ -76,7 +76,7 @@ streamlit run app.py
 
 The application is deployed using Streamlit Cloud and can be accessed through a public URL.
 
-(Link will be added after deployment)
+https://syllabus-cracker-nywxanr28dajtfkpffsjyf.streamlit.app/
 
 🎓 Project Information
 
