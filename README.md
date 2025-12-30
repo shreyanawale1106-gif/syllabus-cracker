@@ -74,6 +74,9 @@ streamlit run app.py
 
 🌐 Live Demo
 
+<img width="2559" height="1358" alt="image" src="https://github.com/user-attachments/assets/ce2e7fe0-8946-422c-a024-9b4bcb706cfb" />
+
+
 The application is deployed using Streamlit Cloud and can be accessed through a public URL.
 
 https://syllabus-cracker-nywxanr28dajtfkpffsjyf.streamlit.app/
