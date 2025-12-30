@@ -74,7 +74,8 @@ streamlit run app.py
 
 🌐 Live Demo
 
-<img width="2559" height="1358" alt="image" src="https://github.com/user-attachments/assets/ce2e7fe0-8946-422c-a024-9b4bcb706cfb" />
+<img width="2559" height="1135" alt="image" src="https://github.com/user-attachments/assets/394db37c-9785-4762-aab5-9a389c03361c" />
+
 
 
 The application is deployed using Streamlit Cloud and can be accessed through a public URL.
