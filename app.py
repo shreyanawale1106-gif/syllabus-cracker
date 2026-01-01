@@ -148,7 +148,13 @@ def summarize_unit(unit):
 # ---------- 5. STREAMLIT APP UI ---------- #
 
 def main():
-    st.set_page_config(page_title="Syllabus Cracker", layout="wide")
+    # Sidebar logout button
+    with st.sidebar:
+        st.write(f"Logged in as: **admin**")
+        if st.button("Log out"):
+            st.session_state.logged_in = False
+            st.rerun()
+
     st.title("📚 Syllabus Cracker")
     st.caption("Upload your syllabus and generate a personalized study plan.")
 
@@ -216,6 +222,33 @@ def main():
                         f"{item['topic']} (`{item['allocated_hours']} hrs`)"
                     )
 
+# ---------- 6. LOGIN LOGIC ---------- #
+
+def login():
+    if 'logged_in' not in st.session_state:
+        st.session_state.logged_in = False
+
+    if not st.session_state.logged_in:
+        # Centered layout for login screen
+        st.set_page_config(page_title="Syllabus Cracker - Login", layout="centered")
+        
+        st.markdown("<h1 style='text-align: center;'>🔐 Admin Login</h1>", unsafe_allow_html=True)
+        
+        # Create a container for the login form
+        with st.container():
+            user = st.text_input("Username", placeholder="Enter admin")
+            password = st.text_input("Password", type="password", placeholder="Enter admin")
+            
+            if st.button("Login", use_container_width=True):
+                if user == "admin" and password == "admin":
+                    st.session_state.logged_in = True
+                    st.rerun()
+                else:
+                    st.error("Invalid Username or Password")
+    else:
+        # Wide layout for the main application
+        st.set_page_config(page_title="Syllabus Cracker", layout="wide")
+        main()
 
 if __name__ == "__main__":
-    main()
+    login()
