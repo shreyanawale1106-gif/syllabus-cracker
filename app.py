@@ -17,7 +17,7 @@ def login_page():
     if username == "admin" and password == "admin":
         st.session_state["logged_in"] = True
         st.success("Login successful!")
-        st.rerun()   ✅
+        st.rerun()   
 
         else:
             st.error("Invalid username or password")
