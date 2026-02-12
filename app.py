@@ -14,8 +14,8 @@ from datetime import date, timedelta
 
 USER_FILE = "users.json"
 
-# 🔥 REPLACE THIS WITH YOUR REAL STREAMLIT URL
-APP_URL = "https://syllabus-cracker-nywxanr28dajtfk.streamlit.app"
+# ✅ YOUR REAL STREAMLIT APP URL (NO SPACES)
+APP_URL = "https://syllabus-cracker-nywxanr28dajtfkpffsjf.streamlit.app"
 
 SENDER_EMAIL = st.secrets.get("SENDER_EMAIL")
 SENDER_PASSWORD = st.secrets.get("SENDER_PASSWORD")
