@@ -9,14 +9,13 @@ from email.message import EmailMessage
 from datetime import date, timedelta
 
 # ==========================
-# CONFIG
+# CONFIG (USING SECRETS)
 # ==========================
 
 USER_FILE = "users.json"
 
-# 🔴 REPLACE THESE
-SENDER_EMAIL = "your_email@gmail.com"
-SENDER_PASSWORD = "your_app_password_here"  # 16-char app password
+SENDER_EMAIL = st.secrets["SENDER_EMAIL"]
+SENDER_PASSWORD = st.secrets["SENDER_PASSWORD"]
 
 
 # ==========================
@@ -44,7 +43,7 @@ def delete_user_account(email):
         save_users(users)
 
 def send_reset_email(to_email, token):
-    reset_link = f"http://localhost:8501/?reset_token={token}"
+    reset_link = f"https://your-app-name.streamlit.app/?reset_token={token}"
 
     msg = EmailMessage()
     msg["Subject"] = "Password Reset - Syllabus Cracker"
@@ -58,9 +57,13 @@ Click the link below to reset your password:
 If you did not request this, ignore this email.
 """)
 
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-        server.login(SENDER_EMAIL, SENDER_PASSWORD)
-        server.send_message(msg)
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(SENDER_EMAIL, SENDER_PASSWORD)
+            server.send_message(msg)
+    except smtplib.SMTPAuthenticationError:
+        st.error("Email authentication failed. Check your app password.")
+        st.stop()
 
 
 # ==========================
@@ -168,13 +171,6 @@ def generate_schedule(units, exam_date, hours_per_day):
     return plan
 
 
-def summarize_unit(unit):
-    topics = [t["topic"] for t in unit["topics"]]
-    if not topics:
-        return f"This unit covers topics related to {unit['unit_title']}."
-    return f"This unit includes: {'; '.join(topics[:4])}"
-
-
 # ==========================
 # MAIN APP
 # ==========================
@@ -188,28 +184,6 @@ def main_app():
         if st.button("Log out"):
             st.session_state.logged_in = False
             st.rerun()
-
-        st.markdown("---")
-
-        if st.button("🗑️ Delete Account"):
-            st.session_state.confirm_delete = True
-
-        if st.session_state.get("confirm_delete"):
-            st.warning("This action cannot be undone.")
-
-            col1, col2 = st.columns(2)
-
-            with col1:
-                if st.button("Yes, Delete"):
-                    delete_user_account(email)
-                    st.session_state.logged_in = False
-                    st.success("Account deleted.")
-                    st.rerun()
-
-            with col2:
-                if st.button("Cancel"):
-                    st.session_state.confirm_delete = False
-                    st.rerun()
 
     st.title("📚 Syllabus Cracker")
 
@@ -228,26 +202,12 @@ def main_app():
 
         raw_text = extract_text_from_upload(uploaded_file)
         units = parse_syllabus(raw_text)
-
-        for unit in units:
-            unit["summary"] = summarize_unit(unit)
-
         schedule = generate_schedule(units, exam_date, hours_per_day)
 
-        col_left, col_right = st.columns(2)
-
-        with col_left:
-            st.subheader("Units")
-            for unit in units:
-                st.markdown(f"### {unit['unit_title']}")
-                st.markdown(unit["summary"])
-
-        with col_right:
-            st.subheader("Study Plan")
-            for item in schedule:
-                st.markdown(
-                    f"**{item['date']}** → {item['topic']} ({item['allocated_hours']} hrs)"
-                )
+        for item in schedule:
+            st.markdown(
+                f"**{item['date']}** → {item['topic']} ({item['allocated_hours']} hrs)"
+            )
 
 
 # ==========================
@@ -255,25 +215,7 @@ def main_app():
 # ==========================
 
 def auth_system():
-    st.set_page_config(page_title="Syllabus Cracker", layout="centered")
-
     users = load_users()
-    query_params = st.query_params
-    token = query_params.get("reset_token")
-
-    # RESET PASSWORD PAGE
-    if token:
-        for email, data in users.items():
-            if data.get("reset_token") == token:
-                st.title("Reset Password")
-                new_password = st.text_input("New Password", type="password")
-
-                if st.button("Update Password"):
-                    users[email]["password"] = hash_password(new_password)
-                    users[email].pop("reset_token", None)
-                    save_users(users)
-                    st.success("Password updated. Please login.")
-                    st.stop()
 
     if "logged_in" not in st.session_state:
         st.session_state.logged_in = False
