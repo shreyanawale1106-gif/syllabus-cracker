@@ -14,7 +14,6 @@ from datetime import date, timedelta
 
 USER_FILE = "users.json"
 
-# Safe secrets loading (prevents crash if not set)
 SENDER_EMAIL = st.secrets.get("SENDER_EMAIL")
 SENDER_PASSWORD = st.secrets.get("SENDER_PASSWORD")
 
@@ -43,12 +42,22 @@ def delete_user_account(email):
         del users[email]
         save_users(users)
 
+
+# ==========================
+# SEND RESET EMAIL
+# ==========================
+
 def send_reset_email(to_email, token):
     if not SENDER_EMAIL or not SENDER_PASSWORD:
-        st.error("Email secrets not configured in Streamlit Cloud.")
+        st.error("Email secrets not configured properly.")
         st.stop()
 
-    reset_link = f"https://your-app-name.streamlit.app/?reset_token={token}"
+    # AUTO DETECT STREAMLIT APP URL
+    base_url = st.get_option("browser.serverAddress")
+    if not base_url.startswith("http"):
+        base_url = f"https://{base_url}"
+
+    reset_link = f"{base_url}/?reset_token={token}"
 
     msg = EmailMessage()
     msg["Subject"] = "Password Reset - Syllabus Cracker"
@@ -205,7 +214,7 @@ def main_app():
                     delete_user_account(email)
                     st.session_state.logged_in = False
                     st.session_state.confirm_delete = False
-                    st.success("Account deleted successfully.")
+                    st.success("Account deleted.")
                     st.rerun()
 
             with col2:
@@ -249,7 +258,6 @@ def auth_system():
     query_params = st.query_params
     token = query_params.get("reset_token")
 
-    # RESET PASSWORD PAGE
     if token:
         for email, data in users.items():
             if data.get("reset_token") == token:
