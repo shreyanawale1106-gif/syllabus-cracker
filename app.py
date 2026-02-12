@@ -1,45 +1,88 @@
 import streamlit as st
 import pdfplumber
 import io
+import json
+import hashlib
+import secrets
+import smtplib
+from email.message import EmailMessage
 from datetime import date, datetime, timedelta
 
+# ==============================
+# CONFIG
+# ==============================
 
-# ---------- 1. TEXT EXTRACTION ---------- #
+USER_FILE = "users.json"
 
-def extract_text_from_upload(uploaded_file) -> str:
-    """
-    Extract text from an uploaded PDF or TXT file.
-    """
-    if uploaded_file is None:
-        return ""
+# 🔴 CHANGE THESE TO YOUR EMAIL DETAILS
+SENDER_EMAIL = "your_email@gmail.com"
+SENDER_PASSWORD = "your_app_password_here"
 
+
+# ==============================
+# USER MANAGEMENT
+# ==============================
+
+def load_users():
+    try:
+        with open(USER_FILE, "r") as f:
+            return json.load(f)
+    except:
+        return {}
+
+def save_users(users):
+    with open(USER_FILE, "w") as f:
+        json.dump(users, f)
+
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
+
+def send_reset_email(to_email, token):
+    reset_link = f"http://localhost:8501/?reset_token={token}"
+
+    msg = EmailMessage()
+    msg["Subject"] = "Password Reset - Syllabus Cracker"
+    msg["From"] = SENDER_EMAIL
+    msg["To"] = to_email
+    msg.set_content(f"""
+Click the link below to reset your password:
+
+{reset_link}
+
+If you did not request this, ignore this email.
+""")
+
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        server.login(SENDER_EMAIL, SENDER_PASSWORD)
+        server.send_message(msg)
+
+
+# ==============================
+# TEXT EXTRACTION
+# ==============================
+
+def extract_text_from_upload(uploaded_file):
     filename = uploaded_file.name.lower()
     data = uploaded_file.read()
 
-    # TXT
     if filename.endswith(".txt"):
         return data.decode("utf-8", errors="ignore")
 
-    # PDF
     if filename.endswith(".pdf"):
         text = ""
         with pdfplumber.open(io.BytesIO(data)) as pdf:
             for page in pdf.pages:
-                page_text = page.extract_text() or ""
-                text += page_text + "\n"
+                text += (page.extract_text() or "") + "\n"
         return text
 
-    raise ValueError("Unsupported file type. Please upload a .pdf or .txt file.")
+    raise ValueError("Unsupported file type.")
 
 
-# ---------- 2. PARSE SYLLABUS INTO UNITS & TOPICS ---------- #
+# ==============================
+# PARSE SYLLABUS
+# ==============================
 
 def parse_syllabus(raw_text):
-    """
-    Simple heuristic parser:
-    - Lines starting with 'Unit' or 'Module' become unit titles
-    - Bullet lines (-, *, •, ▪) become topics
-    """
     lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
     units = []
     current_unit = None
@@ -47,23 +90,19 @@ def parse_syllabus(raw_text):
     for line in lines:
         lower = line.lower()
 
-        # New unit/module
         if lower.startswith("unit") or lower.startswith("module"):
             if current_unit:
                 units.append(current_unit)
             current_unit = {"unit_title": line, "topics": []}
 
-        # Bullet point -> topic
-        elif line.startswith(("-", "*", "•", "▪")):
+        elif line.startswith(("-", "*", "•")):
             if current_unit is None:
                 current_unit = {"unit_title": "General", "topics": []}
-            topic_text = line[1:].strip()
             current_unit["topics"].append({
-                "topic": topic_text,
+                "topic": line[1:].strip(),
                 "difficulty": "medium"
             })
 
-        # Normal line → continuation or standalone topic
         else:
             if current_unit is None:
                 current_unit = {"unit_title": "General", "topics": []}
@@ -81,174 +120,191 @@ def parse_syllabus(raw_text):
     return units
 
 
-# ---------- 3. STUDY PLAN GENERATION ---------- #
+# ==============================
+# STUDY PLAN
+# ==============================
 
-def estimate_hours(difficulty: str) -> float:
-    """
-    Map difficulty to estimated hours.
-    """
-    difficulty = difficulty.lower()
+def estimate_hours(difficulty):
     if difficulty == "easy":
-        return 1.0
+        return 1
     if difficulty == "hard":
-        return 3.0
-    return 2.0
-
+        return 3
+    return 2
 
 def generate_schedule(units, exam_date, hours_per_day):
-    """
-    Assign topics day by day from today until exam date.
-    """
     today = date.today()
     current_day = today
-    remaining_hours_today = hours_per_day
+    remaining_hours = hours_per_day
     plan = []
 
     for unit in units:
         for topic in unit["topics"]:
-            hours_needed = estimate_hours(topic.get("difficulty", "medium"))
+            hours_needed = estimate_hours(topic["difficulty"])
 
             while hours_needed > 0 and current_day <= exam_date:
-                if remaining_hours_today <= 0:
+                if remaining_hours <= 0:
                     current_day += timedelta(days=1)
-                    remaining_hours_today = hours_per_day
+                    remaining_hours = hours_per_day
                     continue
 
-                allocated = min(hours_needed, remaining_hours_today)
+                allocated = min(hours_needed, remaining_hours)
 
                 plan.append({
                     "date": current_day.isoformat(),
                     "unit_title": unit["unit_title"],
                     "topic": topic["topic"],
-                    "allocated_hours": round(allocated, 2),
+                    "allocated_hours": allocated
                 })
 
                 hours_needed -= allocated
-                remaining_hours_today -= allocated
-
-            if current_day > exam_date:
-                break
-
-        if current_day > exam_date:
-            break
+                remaining_hours -= allocated
 
     return plan
 
-
-# ---------- 4. SIMPLE UNIT SUMMARY ---------- #
 
 def summarize_unit(unit):
     topics = [t["topic"] for t in unit["topics"]]
     if not topics:
         return f"This unit covers topics related to {unit['unit_title']}."
-    joined = "; ".join(topics[:4])
-    return f"This unit ({unit['unit_title']}) includes: {joined}."
+    return f"This unit includes: {'; '.join(topics[:4])}"
 
 
-# ---------- 5. STREAMLIT APP UI ---------- #
+# ==============================
+# MAIN APP
+# ==============================
 
-def main():
-    # Sidebar logout button
+def main_app():
+    users = load_users()
+    email = st.session_state["user"]
+
     with st.sidebar:
-        st.write(f"Logged in as: **admin**")
+        st.write(f"Logged in as: **{email}**")
         if st.button("Log out"):
             st.session_state.logged_in = False
             st.rerun()
 
     st.title("📚 Syllabus Cracker")
-    st.caption("Upload your syllabus and generate a personalized study plan.")
 
-    uploaded_file = st.file_uploader(
-        "Upload Syllabus (.pdf or .txt)",
-        type=["pdf", "txt"]
-    )
+    uploaded_file = st.file_uploader("Upload Syllabus (.pdf or .txt)", type=["pdf", "txt"])
 
     col1, col2 = st.columns(2)
     with col1:
-        exam_date = st.date_input("📅 Exam Date", min_value=date.today())
+        exam_date = st.date_input("Exam Date", min_value=date.today())
     with col2:
-        hours_per_day = st.slider(
-            "⏱️ Study hours per day",
-            1.0, 10.0, 2.0, 0.5
-        )
+        hours_per_day = st.slider("Study hours per day", 1.0, 10.0, 2.0, 0.5)
 
-    if st.button("✨ Generate Study Plan"):
+    if st.button("Generate Study Plan"):
         if uploaded_file is None:
-            st.warning("Please upload a syllabus file first.")
+            st.warning("Upload a syllabus file.")
             return
 
-        try:
-            raw_text = extract_text_from_upload(uploaded_file)
-        except Exception as e:
-            st.error(f"Error reading file: {e}")
-            return
-
-        if not raw_text.strip():
-            st.error("Could not extract any text from the file.")
-            return
-
+        raw_text = extract_text_from_upload(uploaded_file)
         units = parse_syllabus(raw_text)
-
-        if not units:
-            st.error("Could not detect any units or topics.")
-            return
 
         for unit in units:
             unit["summary"] = summarize_unit(unit)
 
         schedule = generate_schedule(units, exam_date, hours_per_day)
 
-        st.success("Study plan generated successfully!")
-
         col_left, col_right = st.columns(2)
 
         with col_left:
-            st.subheader("📚 Units & Summaries")
-            for i, unit in enumerate(units, start=1):
-                with st.expander(f"Unit {i}: {unit['unit_title']}", expanded=(i == 1)):
-                    st.markdown(f"**Summary:** {unit['summary']}")
-                    st.markdown("**Topics:**")
-                    for j, t in enumerate(unit["topics"], start=1):
-                        st.markdown(f"- {j}. {t['topic']}")
+            st.subheader("Units")
+            for unit in units:
+                st.markdown(f"### {unit['unit_title']}")
+                st.markdown(unit["summary"])
 
         with col_right:
-            st.subheader("🗓️ Study Plan")
-            if not schedule:
-                st.warning("Not enough days to schedule all topics.")
-            else:
-                for item in schedule:
-                    st.markdown(
-                        f"**{item['date']}** → *{item['unit_title']}* – "
-                        f"{item['topic']} (`{item['allocated_hours']} hrs`)"
-                    )
+            st.subheader("Study Plan")
+            for item in schedule:
+                st.markdown(
+                    f"**{item['date']}** → {item['topic']} ({item['allocated_hours']} hrs)"
+                )
 
-# ---------- 6. LOGIN LOGIC ---------- #
 
-def login():
-    if 'logged_in' not in st.session_state:
+# ==============================
+# LOGIN + REGISTER + FORGOT
+# ==============================
+
+def auth_system():
+    st.set_page_config(page_title="Syllabus Cracker", layout="centered")
+
+    users = load_users()
+
+    query_params = st.query_params
+    token = query_params.get("reset_token")
+
+    # ===== RESET PASSWORD PAGE =====
+    if token:
+        for email, data in users.items():
+            if data.get("reset_token") == token:
+                st.title("Reset Password")
+                new_password = st.text_input("New Password", type="password")
+
+                if st.button("Update Password"):
+                    users[email]["password"] = hash_password(new_password)
+                    users[email].pop("reset_token", None)
+                    save_users(users)
+                    st.success("Password updated. Please login.")
+                    st.stop()
+
+    if "logged_in" not in st.session_state:
         st.session_state.logged_in = False
 
-    if not st.session_state.logged_in:
-        # Centered layout for login screen
-        st.set_page_config(page_title="Syllabus Cracker - Login", layout="centered")
-        
-        st.markdown("<h1 style='text-align: center;'>🔐 Admin Login</h1>", unsafe_allow_html=True)
-        
-        # Create a container for the login form
-        with st.container():
-            user = st.text_input("Username", placeholder="Enter admin")
-            password = st.text_input("Password", type="password", placeholder="Enter admin")
-            
-            if st.button("Login", use_container_width=True):
-                if user == "admin" and password == "admin":
-                    st.session_state.logged_in = True
-                    st.rerun()
-                else:
-                    st.error("Invalid Username or Password")
-    else:
-        # Wide layout for the main application
-        st.set_page_config(page_title="Syllabus Cracker", layout="wide")
-        main()
+    if st.session_state.logged_in:
+        main_app()
+        return
+
+    st.title("🔐 Login")
+
+    menu = st.radio("", ["Login", "Register", "Forgot Password"])
+
+    # ===== LOGIN =====
+    if menu == "Login":
+        email = st.text_input("Email")
+        password = st.text_input("Password", type="password")
+
+        if st.button("Login"):
+            if email in users and users[email]["password"] == hash_password(password):
+                st.session_state.logged_in = True
+                st.session_state.user = email
+                st.rerun()
+            else:
+                st.error("Invalid credentials")
+
+    # ===== REGISTER =====
+    elif menu == "Register":
+        email = st.text_input("Email")
+        password = st.text_input("Password", type="password")
+
+        if st.button("Create Account"):
+            if email in users:
+                st.error("User already exists")
+            else:
+                users[email] = {
+                    "password": hash_password(password)
+                }
+                save_users(users)
+                st.success("Account created. Please login.")
+
+    # ===== FORGOT PASSWORD =====
+    elif menu == "Forgot Password":
+        email = st.text_input("Enter your registered email")
+
+        if st.button("Send Reset Link"):
+            if email in users:
+                token = secrets.token_urlsafe(16)
+                users[email]["reset_token"] = token
+                save_users(users)
+                send_reset_email(email, token)
+                st.success("Reset link sent to your email.")
+            else:
+                st.error("Email not found")
+
+
+# ==============================
+# RUN APP
+# ==============================
 
 if __name__ == "__main__":
-    login()
+    auth_system()
