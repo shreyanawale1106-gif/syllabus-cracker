@@ -14,9 +14,9 @@ from datetime import date, timedelta
 
 USER_FILE = "users.json"
 
-# 🔴 CHANGE THESE
+# 🔴 REPLACE THESE
 SENDER_EMAIL = "your_email@gmail.com"
-SENDER_PASSWORD = "your_app_password_here"
+SENDER_PASSWORD = "your_app_password_here"  # 16-char app password
 
 
 # ==========================
@@ -203,7 +203,7 @@ def main_app():
                 if st.button("Yes, Delete"):
                     delete_user_account(email)
                     st.session_state.logged_in = False
-                    st.success("Account deleted successfully.")
+                    st.success("Account deleted.")
                     st.rerun()
 
             with col2:
@@ -258,11 +258,10 @@ def auth_system():
     st.set_page_config(page_title="Syllabus Cracker", layout="centered")
 
     users = load_users()
-
     query_params = st.query_params
     token = query_params.get("reset_token")
 
-    # ===== RESET PASSWORD =====
+    # RESET PASSWORD PAGE
     if token:
         for email, data in users.items():
             if data.get("reset_token") == token:
@@ -287,7 +286,6 @@ def auth_system():
 
     menu = st.radio("", ["Login", "Register", "Forgot Password"])
 
-    # LOGIN
     if menu == "Login":
         email = st.text_input("Email")
         password = st.text_input("Password", type="password")
@@ -300,7 +298,6 @@ def auth_system():
             else:
                 st.error("Invalid credentials")
 
-    # REGISTER
     elif menu == "Register":
         email = st.text_input("Email")
         password = st.text_input("Password", type="password")
@@ -309,13 +306,10 @@ def auth_system():
             if email in users:
                 st.error("User already exists")
             else:
-                users[email] = {
-                    "password": hash_password(password)
-                }
+                users[email] = {"password": hash_password(password)}
                 save_users(users)
                 st.success("Account created. Please login.")
 
-    # FORGOT PASSWORD
     elif menu == "Forgot Password":
         email = st.text_input("Enter your registered email")
 
