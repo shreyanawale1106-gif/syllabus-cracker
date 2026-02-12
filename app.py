@@ -6,22 +6,22 @@ import hashlib
 import secrets
 import smtplib
 from email.message import EmailMessage
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 
-# ==============================
+# ==========================
 # CONFIG
-# ==============================
+# ==========================
 
 USER_FILE = "users.json"
 
-# 🔴 CHANGE THESE TO YOUR EMAIL DETAILS
+# 🔴 CHANGE THESE
 SENDER_EMAIL = "your_email@gmail.com"
 SENDER_PASSWORD = "your_app_password_here"
 
 
-# ==============================
+# ==========================
 # USER MANAGEMENT
-# ==============================
+# ==========================
 
 def load_users():
     try:
@@ -36,6 +36,12 @@ def save_users(users):
 
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
+
+def delete_user_account(email):
+    users = load_users()
+    if email in users:
+        del users[email]
+        save_users(users)
 
 def send_reset_email(to_email, token):
     reset_link = f"http://localhost:8501/?reset_token={token}"
@@ -57,9 +63,9 @@ If you did not request this, ignore this email.
         server.send_message(msg)
 
 
-# ==============================
+# ==========================
 # TEXT EXTRACTION
-# ==============================
+# ==========================
 
 def extract_text_from_upload(uploaded_file):
     filename = uploaded_file.name.lower()
@@ -78,9 +84,9 @@ def extract_text_from_upload(uploaded_file):
     raise ValueError("Unsupported file type.")
 
 
-# ==============================
+# ==========================
 # PARSE SYLLABUS
-# ==============================
+# ==========================
 
 def parse_syllabus(raw_text):
     lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
@@ -120,9 +126,9 @@ def parse_syllabus(raw_text):
     return units
 
 
-# ==============================
+# ==========================
 # STUDY PLAN
-# ==============================
+# ==========================
 
 def estimate_hours(difficulty):
     if difficulty == "easy":
@@ -169,19 +175,41 @@ def summarize_unit(unit):
     return f"This unit includes: {'; '.join(topics[:4])}"
 
 
-# ==============================
+# ==========================
 # MAIN APP
-# ==============================
+# ==========================
 
 def main_app():
-    users = load_users()
     email = st.session_state["user"]
 
     with st.sidebar:
         st.write(f"Logged in as: **{email}**")
+
         if st.button("Log out"):
             st.session_state.logged_in = False
             st.rerun()
+
+        st.markdown("---")
+
+        if st.button("🗑️ Delete Account"):
+            st.session_state.confirm_delete = True
+
+        if st.session_state.get("confirm_delete"):
+            st.warning("This action cannot be undone.")
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                if st.button("Yes, Delete"):
+                    delete_user_account(email)
+                    st.session_state.logged_in = False
+                    st.success("Account deleted successfully.")
+                    st.rerun()
+
+            with col2:
+                if st.button("Cancel"):
+                    st.session_state.confirm_delete = False
+                    st.rerun()
 
     st.title("📚 Syllabus Cracker")
 
@@ -222,9 +250,9 @@ def main_app():
                 )
 
 
-# ==============================
-# LOGIN + REGISTER + FORGOT
-# ==============================
+# ==========================
+# AUTH SYSTEM
+# ==========================
 
 def auth_system():
     st.set_page_config(page_title="Syllabus Cracker", layout="centered")
@@ -234,7 +262,7 @@ def auth_system():
     query_params = st.query_params
     token = query_params.get("reset_token")
 
-    # ===== RESET PASSWORD PAGE =====
+    # ===== RESET PASSWORD =====
     if token:
         for email, data in users.items():
             if data.get("reset_token") == token:
@@ -259,7 +287,7 @@ def auth_system():
 
     menu = st.radio("", ["Login", "Register", "Forgot Password"])
 
-    # ===== LOGIN =====
+    # LOGIN
     if menu == "Login":
         email = st.text_input("Email")
         password = st.text_input("Password", type="password")
@@ -272,7 +300,7 @@ def auth_system():
             else:
                 st.error("Invalid credentials")
 
-    # ===== REGISTER =====
+    # REGISTER
     elif menu == "Register":
         email = st.text_input("Email")
         password = st.text_input("Password", type="password")
@@ -287,7 +315,7 @@ def auth_system():
                 save_users(users)
                 st.success("Account created. Please login.")
 
-    # ===== FORGOT PASSWORD =====
+    # FORGOT PASSWORD
     elif menu == "Forgot Password":
         email = st.text_input("Enter your registered email")
 
@@ -302,9 +330,9 @@ def auth_system():
                 st.error("Email not found")
 
 
-# ==============================
-# RUN APP
-# ==============================
+# ==========================
+# RUN
+# ==========================
 
 if __name__ == "__main__":
     auth_system()
