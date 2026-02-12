@@ -9,13 +9,14 @@ from email.message import EmailMessage
 from datetime import date, timedelta
 
 # ==========================
-# CONFIG (USING SECRETS)
+# CONFIG
 # ==========================
 
 USER_FILE = "users.json"
 
-SENDER_EMAIL = st.secrets["SENDER_EMAIL"]
-SENDER_PASSWORD = st.secrets["SENDER_PASSWORD"]
+# Safe secrets loading (prevents crash if not set)
+SENDER_EMAIL = st.secrets.get("SENDER_EMAIL")
+SENDER_PASSWORD = st.secrets.get("SENDER_PASSWORD")
 
 
 # ==========================
@@ -43,6 +44,10 @@ def delete_user_account(email):
         save_users(users)
 
 def send_reset_email(to_email, token):
+    if not SENDER_EMAIL or not SENDER_PASSWORD:
+        st.error("Email secrets not configured in Streamlit Cloud.")
+        st.stop()
+
     reset_link = f"https://your-app-name.streamlit.app/?reset_token={token}"
 
     msg = EmailMessage()
@@ -62,7 +67,7 @@ If you did not request this, ignore this email.
             server.login(SENDER_EMAIL, SENDER_PASSWORD)
             server.send_message(msg)
     except smtplib.SMTPAuthenticationError:
-        st.error("Email authentication failed. Check your app password.")
+        st.error("Email authentication failed. Check your Gmail App Password.")
         st.stop()
 
 
@@ -185,6 +190,29 @@ def main_app():
             st.session_state.logged_in = False
             st.rerun()
 
+        st.markdown("---")
+
+        if st.button("🗑️ Delete Account"):
+            st.session_state.confirm_delete = True
+
+        if st.session_state.get("confirm_delete"):
+            st.warning("This action cannot be undone.")
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                if st.button("Yes, Delete My Account"):
+                    delete_user_account(email)
+                    st.session_state.logged_in = False
+                    st.session_state.confirm_delete = False
+                    st.success("Account deleted successfully.")
+                    st.rerun()
+
+            with col2:
+                if st.button("Cancel"):
+                    st.session_state.confirm_delete = False
+                    st.rerun()
+
     st.title("📚 Syllabus Cracker")
 
     uploaded_file = st.file_uploader("Upload Syllabus (.pdf or .txt)", type=["pdf", "txt"])
@@ -204,6 +232,7 @@ def main_app():
         units = parse_syllabus(raw_text)
         schedule = generate_schedule(units, exam_date, hours_per_day)
 
+        st.subheader("Study Plan")
         for item in schedule:
             st.markdown(
                 f"**{item['date']}** → {item['topic']} ({item['allocated_hours']} hrs)"
@@ -216,6 +245,23 @@ def main_app():
 
 def auth_system():
     users = load_users()
+
+    query_params = st.query_params
+    token = query_params.get("reset_token")
+
+    # RESET PASSWORD PAGE
+    if token:
+        for email, data in users.items():
+            if data.get("reset_token") == token:
+                st.title("Reset Password")
+                new_password = st.text_input("New Password", type="password")
+
+                if st.button("Update Password"):
+                    users[email]["password"] = hash_password(new_password)
+                    users[email].pop("reset_token", None)
+                    save_users(users)
+                    st.success("Password updated. Please login.")
+                    st.stop()
 
     if "logged_in" not in st.session_state:
         st.session_state.logged_in = False
