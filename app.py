@@ -14,6 +14,9 @@ from datetime import date, timedelta
 
 USER_FILE = "users.json"
 
+# 🔥 REPLACE THIS WITH YOUR REAL STREAMLIT URL
+APP_URL = "https://syllabus-cracker-nywxanr28dajtfk.streamlit.app"
+
 SENDER_EMAIL = st.secrets.get("SENDER_EMAIL")
 SENDER_PASSWORD = st.secrets.get("SENDER_PASSWORD")
 
@@ -52,12 +55,7 @@ def send_reset_email(to_email, token):
         st.error("Email secrets not configured properly.")
         st.stop()
 
-    # AUTO DETECT STREAMLIT APP URL
-    base_url = st.get_option("browser.serverAddress")
-    if not base_url.startswith("http"):
-        base_url = f"https://{base_url}"
-
-    reset_link = f"{base_url}/?reset_token={token}"
+    reset_link = f"{APP_URL}/?reset_token={token}"
 
     msg = EmailMessage()
     msg["Subject"] = "Password Reset - Syllabus Cracker"
@@ -174,7 +172,6 @@ def generate_schedule(units, exam_date, hours_per_day):
 
                 plan.append({
                     "date": current_day.isoformat(),
-                    "unit_title": unit["unit_title"],
                     "topic": topic["topic"],
                     "allocated_hours": allocated
                 })
