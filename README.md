@@ -74,8 +74,12 @@ streamlit run app.py
 
 🌐 Live Demo
 
-<img width="2559" height="1141" alt="Screenshot 2026-02-12 230217" src="https://github.com/user-attachments/assets/d93bb752-0c31-4a76-9ee8-34150b054156" />
-
+<img width="2559" height="1141" alt="Screenshot 2026-02-12 230217" src="https://github.com/user-attachments/assets/1d59066c-86db-4d6a-b90f-6232f5df9e03" />
+<img width="2559" height="1142" alt="Screenshot 2026-02-12 230225" src="https://github.com/user-attachments/assets/0dad0f34-9432-486e-a1f6-f0840573ffe0" />
+<img width="2556" height="1139" alt="Screenshot 2026-02-12 230251" src="https://github.com/user-attachments/assets/6bcf027b-cedd-48d9-a5bd-d4e9dbdb1ba4" />
+<img width="1057" height="488" alt="Screenshot 2026-02-12 230411" src="https://github.com/user-attachments/assets/6b04751d-f3a4-456c-a979-90fc6e4e8421" />
+<img width="2559" height="1141" alt="Screenshot 2026-02-12 230502" src="https://github.com/user-attachments/assets/1e8f3ac9-e595-4330-a7df-eb1bf0588b40" />
+<img width="2551" height="1146" alt="Screenshot 2026-02-12 230535" src="https://github.com/user-attachments/assets/09dfc133-a35a-4540-8460-f27e2832df0c" />
 
 
 The application is deployed using Streamlit Cloud and can be accessed through a public URL.
