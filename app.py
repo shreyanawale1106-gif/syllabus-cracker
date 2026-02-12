@@ -14,8 +14,8 @@ from datetime import date, timedelta
 
 USER_FILE = "users.json"
 
-# ✅ YOUR REAL STREAMLIT APP URL (NO SPACES)
-APP_URL = "https://syllabus-cracker-nywxanr28dajtfkpffsjf.streamlit.app"
+# ✅ YOUR REAL STREAMLIT APP URL
+APP_URL = "https://syllabus-cracker-nywxanr28dajtfkpffsjyf.streamlit.app"
 
 SENDER_EMAIL = st.secrets.get("SENDER_EMAIL")
 SENDER_PASSWORD = st.secrets.get("SENDER_PASSWORD")
@@ -252,8 +252,7 @@ def main_app():
 def auth_system():
     users = load_users()
 
-    query_params = st.query_params
-    token = query_params.get("reset_token")
+    token = st.query_params.get("reset_token")
 
     if token:
         for email, data in users.items():
@@ -316,10 +315,6 @@ def auth_system():
             else:
                 st.error("Email not found")
 
-
-# ==========================
-# RUN
-# ==========================
 
 if __name__ == "__main__":
     auth_system()
