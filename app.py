@@ -43,12 +43,12 @@ def delete_user_account(email):
         save_users(users)
 
 # ==========================
-# SEND RESET EMAIL
+# SEND RESET EMAIL (FIXED)
 # ==========================
 
 def send_reset_email(to_email, token):
     if not SENDER_EMAIL or not SENDER_PASSWORD:
-        st.error("Email secrets not configured properly.")
+        st.error("Email secrets not configured properly in Streamlit Cloud.")
         st.stop()
 
     reset_link = f"{APP_URL}/?reset_token={token}"
@@ -65,9 +65,22 @@ Click the link below to reset your password:
 If you did not request this, ignore this email.
 """)
 
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-        server.login(SENDER_EMAIL, SENDER_PASSWORD)
-        server.send_message(msg)
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(SENDER_EMAIL, SENDER_PASSWORD)
+            server.send_message(msg)
+
+    except smtplib.SMTPAuthenticationError:
+        st.error("❌ Gmail authentication failed. Please check your Gmail App Password.")
+        st.stop()
+
+    except smtplib.SMTPException as e:
+        st.error(f"❌ Email sending failed: {str(e)}")
+        st.stop()
+
+    except Exception as e:
+        st.error(f"❌ Unexpected error while sending email: {str(e)}")
+        st.stop()
 
 # ==========================
 # TEXT EXTRACTION
@@ -233,7 +246,7 @@ def main_app():
             st.markdown("---")
 
 # ==========================
-# AUTH SYSTEM (FULLY INTACT)
+# AUTH SYSTEM
 # ==========================
 
 def auth_system():
