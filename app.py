@@ -1,6 +1,5 @@
 import streamlit as st
 import pdfplumber
-import pypdfium2
 import io
 import json
 import hashlib
@@ -14,10 +13,13 @@ from datetime import date, timedelta
 # ==========================
 
 USER_FILE = "users.json"
+
+# ✅ YOUR REAL STREAMLIT APP URL
 APP_URL = "https://syllabus-cracker-nywxanr28dajtfkpffsjyf.streamlit.app"
 
 SENDER_EMAIL = st.secrets.get("SENDER_EMAIL")
 SENDER_PASSWORD = st.secrets.get("SENDER_PASSWORD")
+
 
 # ==========================
 # USER MANAGEMENT
@@ -43,6 +45,7 @@ def delete_user_account(email):
         del users[email]
         save_users(users)
 
+
 # ==========================
 # SEND RESET EMAIL
 # ==========================
@@ -66,12 +69,17 @@ Click the link below to reset your password:
 If you did not request this, ignore this email.
 """)
 
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-        server.login(SENDER_EMAIL, SENDER_PASSWORD)
-        server.send_message(msg)
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(SENDER_EMAIL, SENDER_PASSWORD)
+            server.send_message(msg)
+    except smtplib.SMTPAuthenticationError:
+        st.error("Email authentication failed. Check your Gmail App Password.")
+        st.stop()
+
 
 # ==========================
-# TEXT EXTRACTION (FIXED)
+# TEXT EXTRACTION
 # ==========================
 
 def extract_text_from_upload(uploaded_file):
@@ -82,30 +90,14 @@ def extract_text_from_upload(uploaded_file):
         return data.decode("utf-8", errors="ignore")
 
     if filename.endswith(".pdf"):
-
-        # Try pdfplumber first
         text = ""
-        try:
-            with pdfplumber.open(io.BytesIO(data)) as pdf:
-                for page in pdf.pages:
-                    text += (page.extract_text() or "") + "\n"
-        except:
-            pass
-
-        # If plumber fails, try pypdfium2 fallback
-        if not text.strip():
-            try:
-                pdf = pypdfium2.PdfDocument(io.BytesIO(data))
-                for i in range(len(pdf)):
-                    page = pdf[i]
-                    textpage = page.get_textpage()
-                    text += textpage.get_text_range() + "\n"
-            except:
-                pass
-
+        with pdfplumber.open(io.BytesIO(data)) as pdf:
+            for page in pdf.pages:
+                text += (page.extract_text() or "") + "\n"
         return text
 
-    return ""
+    raise ValueError("Unsupported file type.")
+
 
 # ==========================
 # PARSE SYLLABUS
@@ -114,54 +106,56 @@ def extract_text_from_upload(uploaded_file):
 def parse_syllabus(raw_text):
     lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
     units = []
-    current_unit = {"unit_title": "General", "topics": []}
+    current_unit = None
 
     for line in lines:
         lower = line.lower()
 
         if lower.startswith("unit") or lower.startswith("module"):
-            if current_unit["topics"]:
+            if current_unit:
                 units.append(current_unit)
             current_unit = {"unit_title": line, "topics": []}
-            continue
 
-        if line.startswith(("-", "*", "•")):
-            topic_text = line[1:].strip()
+        elif line.startswith(("-", "*", "•")):
+            if current_unit is None:
+                current_unit = {"unit_title": "General", "topics": []}
             current_unit["topics"].append({
-                "topic": topic_text,
+                "topic": line[1:].strip(),
                 "difficulty": "medium"
             })
-            continue
 
-        if line[0].isdigit() and "." in line[:3]:
-            topic_text = line.split(".", 1)[1].strip()
-            current_unit["topics"].append({
-                "topic": topic_text,
-                "difficulty": "medium"
-            })
-            continue
+        else:
+            if current_unit is None:
+                current_unit = {"unit_title": "General", "topics": []}
+            if current_unit["topics"]:
+                current_unit["topics"][-1]["topic"] += " " + line
+            else:
+                current_unit["topics"].append({
+                    "topic": line,
+                    "difficulty": "medium"
+                })
 
-        current_unit["topics"].append({
-            "topic": line,
-            "difficulty": "medium"
-        })
-
-    if current_unit["topics"]:
+    if current_unit:
         units.append(current_unit)
 
     return units
+
 
 # ==========================
 # STUDY PLAN
 # ==========================
 
 def estimate_hours(difficulty):
+    if difficulty == "easy":
+        return 1
+    if difficulty == "hard":
+        return 3
     return 2
 
 def generate_schedule(units, exam_date, hours_per_day):
     today = date.today()
     current_day = today
-    remaining_hours = float(hours_per_day)
+    remaining_hours = hours_per_day
     plan = []
 
     for unit in units:
@@ -171,7 +165,7 @@ def generate_schedule(units, exam_date, hours_per_day):
             while hours_needed > 0 and current_day <= exam_date:
                 if remaining_hours <= 0:
                     current_day += timedelta(days=1)
-                    remaining_hours = float(hours_per_day)
+                    remaining_hours = hours_per_day
                     continue
 
                 allocated = min(hours_needed, remaining_hours)
@@ -186,6 +180,7 @@ def generate_schedule(units, exam_date, hours_per_day):
                 remaining_hours -= allocated
 
     return plan
+
 
 # ==========================
 # MAIN APP
@@ -204,10 +199,25 @@ def main_app():
         st.markdown("---")
 
         if st.button("🗑️ Delete Account"):
-            delete_user_account(email)
-            st.session_state.logged_in = False
-            st.success("Account deleted.")
-            st.rerun()
+            st.session_state.confirm_delete = True
+
+        if st.session_state.get("confirm_delete"):
+            st.warning("This action cannot be undone.")
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                if st.button("Yes, Delete My Account"):
+                    delete_user_account(email)
+                    st.session_state.logged_in = False
+                    st.session_state.confirm_delete = False
+                    st.success("Account deleted.")
+                    st.rerun()
+
+            with col2:
+                if st.button("Cancel"):
+                    st.session_state.confirm_delete = False
+                    st.rerun()
 
     st.title("📚 Syllabus Cracker")
 
@@ -225,29 +235,15 @@ def main_app():
             return
 
         raw_text = extract_text_from_upload(uploaded_file)
-
-        if not raw_text.strip():
-            st.error("This PDF contains no extractable text (possibly scanned).")
-            return
-
         units = parse_syllabus(raw_text)
-
-        if not units:
-            st.error("Could not parse syllabus structure.")
-            return
-
         schedule = generate_schedule(units, exam_date, hours_per_day)
 
-        if not schedule:
-            st.error("No study plan generated.")
-            return
-
-        st.subheader("📅 Study Plan")
-
+        st.subheader("Study Plan")
         for item in schedule:
             st.markdown(
                 f"**{item['date']}** → {item['topic']} ({item['allocated_hours']} hrs)"
             )
+
 
 # ==========================
 # AUTH SYSTEM
@@ -255,6 +251,21 @@ def main_app():
 
 def auth_system():
     users = load_users()
+
+    token = st.query_params.get("reset_token")
+
+    if token:
+        for email, data in users.items():
+            if data.get("reset_token") == token:
+                st.title("Reset Password")
+                new_password = st.text_input("New Password", type="password")
+
+                if st.button("Update Password"):
+                    users[email]["password"] = hash_password(new_password)
+                    users[email].pop("reset_token", None)
+                    save_users(users)
+                    st.success("Password updated. Please login.")
+                    st.stop()
 
     if "logged_in" not in st.session_state:
         st.session_state.logged_in = False
@@ -265,7 +276,7 @@ def auth_system():
 
     st.title("🔐 Login")
 
-    menu = st.radio("Select Option", ["Login", "Register"])
+    menu = st.radio("", ["Login", "Register", "Forgot Password"])
 
     if menu == "Login":
         email = st.text_input("Email")
@@ -290,6 +301,20 @@ def auth_system():
                 users[email] = {"password": hash_password(password)}
                 save_users(users)
                 st.success("Account created. Please login.")
+
+    elif menu == "Forgot Password":
+        email = st.text_input("Enter your registered email")
+
+        if st.button("Send Reset Link"):
+            if email in users:
+                token = secrets.token_urlsafe(16)
+                users[email]["reset_token"] = token
+                save_users(users)
+                send_reset_email(email, token)
+                st.success("Reset link sent to your email.")
+            else:
+                st.error("Email not found")
+
 
 if __name__ == "__main__":
     auth_system()
