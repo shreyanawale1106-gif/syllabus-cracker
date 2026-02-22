@@ -90,86 +90,60 @@ def extract_text_from_upload(uploaded_file):
     raise ValueError("Unsupported file type.")
 
 # ==========================
-# SMART SYLLABUS PARSER
+# SMART TEXT CHUNKING
 # ==========================
 
-def parse_syllabus(raw_text):
-    lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
-    units = []
-    current_unit = None
+def split_into_chunks(text, words_per_chunk=1000):
+    words = text.split()
+    chunks = []
 
-    for line in lines:
-        lower = line.lower()
+    for i in range(0, len(words), words_per_chunk):
+        chunk = " ".join(words[i:i+words_per_chunk])
+        chunks.append(chunk)
 
-        if (
-            lower.startswith("unit")
-            or lower.startswith("module")
-            or lower.startswith("chapter")
-        ):
-            if current_unit:
-                units.append(current_unit)
-
-            current_unit = {
-                "unit_title": line,
-                "topics": [{
-                    "topic": line,
-                    "difficulty": "medium"
-                }]
-            }
-
-        else:
-            if current_unit is None:
-                current_unit = {
-                    "unit_title": "General",
-                    "topics": []
-                }
-
-            # Avoid massive paragraphs
-            if len(line) < 120:
-                current_unit["topics"].append({
-                    "topic": line,
-                    "difficulty": "medium"
-                })
-
-    if current_unit:
-        units.append(current_unit)
-
-    return units
+    return chunks
 
 # ==========================
 # STUDY PLAN GENERATION
 # ==========================
 
-def estimate_hours(difficulty):
-    if difficulty == "easy":
-        return 1
-    if difficulty == "hard":
-        return 3
-    return 2
-
-def generate_schedule(units, exam_date, hours_per_day):
+def generate_schedule_from_text(raw_text, exam_date, hours_per_day):
     today = date.today()
-    current_day = today
+    total_days = (exam_date - today).days + 1
+
+    if total_days <= 0:
+        return []
+
+    chunks = split_into_chunks(raw_text, words_per_chunk=800)
+
+    if not chunks:
+        return []
+
+    chunks_per_day = max(1, len(chunks) // total_days)
+
     plan = []
+    chunk_index = 0
 
-    for unit in units:
-        for topic in unit["topics"]:
-            hours_needed = estimate_hours(topic["difficulty"])
+    for day_offset in range(total_days):
+        current_day = today + timedelta(days=day_offset)
 
-            while hours_needed > 0:
-                if current_day > exam_date:
-                    return plan
+        daily_chunks = chunks[chunk_index:chunk_index+chunks_per_day]
 
-                allocated = min(hours_needed, hours_per_day)
+        if not daily_chunks:
+            break
 
-                plan.append({
-                    "date": current_day.isoformat(),
-                    "topic": topic["topic"],
-                    "allocated_hours": allocated
-                })
+        topic_title = f"Study Section {chunk_index+1} - {chunk_index+len(daily_chunks)}"
 
-                hours_needed -= allocated
-                current_day += timedelta(days=1)
+        plan.append({
+            "date": current_day.isoformat(),
+            "topic": topic_title,
+            "allocated_hours": hours_per_day
+        })
+
+        chunk_index += chunks_per_day
+
+        if chunk_index >= len(chunks):
+            break
 
     return plan
 
@@ -221,13 +195,7 @@ def main_app():
     with col1:
         exam_date = st.date_input("Exam Date", min_value=date.today())
     with col2:
-        hours_per_day = st.slider(
-            "Study hours per day",
-            1.0,
-            10.0,
-            2.0,
-            0.5
-        )
+        hours_per_day = st.slider("Study hours per day", 1.0, 10.0, 2.0, 0.5)
 
     if st.button("Generate Study Plan"):
 
@@ -241,26 +209,23 @@ def main_app():
             st.error("No text extracted from file.")
             return
 
-        units = parse_syllabus(raw_text)
-        schedule = generate_schedule(units, exam_date, hours_per_day)
+        schedule = generate_schedule_from_text(
+            raw_text,
+            exam_date,
+            hours_per_day
+        )
 
         if not schedule:
-            st.error("Could not generate schedule. Check exam date or syllabus format.")
+            st.error("Not enough time before exam or empty file.")
             return
 
         st.subheader("📅 Study Plan")
 
-        # Group by date
-        grouped = {}
         for item in schedule:
-            grouped.setdefault(item["date"], []).append(item)
-
-        for day, tasks in grouped.items():
-            st.markdown(f"### 📅 {day}")
-            for task in tasks:
-                st.markdown(
-                    f"- **{task['topic']}** — {task['allocated_hours']} hrs"
-                )
+            st.markdown(f"### 📅 {item['date']}")
+            st.markdown(
+                f"- **{item['topic']}** — {item['allocated_hours']} hrs"
+            )
             st.markdown("---")
 
 # ==========================
