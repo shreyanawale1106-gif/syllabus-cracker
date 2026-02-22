@@ -13,13 +13,10 @@ from datetime import date, timedelta
 # ==========================
 
 USER_FILE = "users.json"
-
-# ✅ YOUR REAL STREAMLIT APP URL
 APP_URL = "https://syllabus-cracker-nywxanr28dajtfkpffsjyf.streamlit.app"
 
 SENDER_EMAIL = st.secrets.get("SENDER_EMAIL")
 SENDER_PASSWORD = st.secrets.get("SENDER_PASSWORD")
-
 
 # ==========================
 # USER MANAGEMENT
@@ -44,7 +41,6 @@ def delete_user_account(email):
     if email in users:
         del users[email]
         save_users(users)
-
 
 # ==========================
 # SEND RESET EMAIL
@@ -74,9 +70,8 @@ If you did not request this, ignore this email.
             server.login(SENDER_EMAIL, SENDER_PASSWORD)
             server.send_message(msg)
     except smtplib.SMTPAuthenticationError:
-        st.error("Email authentication failed. Check your Gmail App Password.")
+        st.error("Email authentication failed.")
         st.stop()
-
 
 # ==========================
 # TEXT EXTRACTION
@@ -98,48 +93,49 @@ def extract_text_from_upload(uploaded_file):
 
     raise ValueError("Unsupported file type.")
 
-
 # ==========================
-# PARSE SYLLABUS
+# PARSE SYLLABUS (FIXED)
 # ==========================
 
 def parse_syllabus(raw_text):
     lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
     units = []
-    current_unit = None
+    current_unit = {"unit_title": "General", "topics": []}
 
     for line in lines:
         lower = line.lower()
 
         if lower.startswith("unit") or lower.startswith("module"):
-            if current_unit:
+            if current_unit["topics"]:
                 units.append(current_unit)
             current_unit = {"unit_title": line, "topics": []}
+            continue
 
-        elif line.startswith(("-", "*", "•")):
-            if current_unit is None:
-                current_unit = {"unit_title": "General", "topics": []}
+        if line.startswith(("-", "*", "•")):
+            topic_text = line[1:].strip()
             current_unit["topics"].append({
-                "topic": line[1:].strip(),
+                "topic": topic_text,
                 "difficulty": "medium"
             })
+            continue
 
-        else:
-            if current_unit is None:
-                current_unit = {"unit_title": "General", "topics": []}
-            if current_unit["topics"]:
-                current_unit["topics"][-1]["topic"] += " " + line
-            else:
-                current_unit["topics"].append({
-                    "topic": line,
-                    "difficulty": "medium"
-                })
+        if line[0].isdigit() and "." in line[:3]:
+            topic_text = line.split(".", 1)[1].strip()
+            current_unit["topics"].append({
+                "topic": topic_text,
+                "difficulty": "medium"
+            })
+            continue
 
-    if current_unit:
+        current_unit["topics"].append({
+            "topic": line,
+            "difficulty": "medium"
+        })
+
+    if current_unit["topics"]:
         units.append(current_unit)
 
     return units
-
 
 # ==========================
 # STUDY PLAN
@@ -155,7 +151,7 @@ def estimate_hours(difficulty):
 def generate_schedule(units, exam_date, hours_per_day):
     today = date.today()
     current_day = today
-    remaining_hours = hours_per_day
+    remaining_hours = float(hours_per_day)
     plan = []
 
     for unit in units:
@@ -165,7 +161,7 @@ def generate_schedule(units, exam_date, hours_per_day):
             while hours_needed > 0 and current_day <= exam_date:
                 if remaining_hours <= 0:
                     current_day += timedelta(days=1)
-                    remaining_hours = hours_per_day
+                    remaining_hours = float(hours_per_day)
                     continue
 
                 allocated = min(hours_needed, remaining_hours)
@@ -180,7 +176,6 @@ def generate_schedule(units, exam_date, hours_per_day):
                 remaining_hours -= allocated
 
     return plan
-
 
 # ==========================
 # MAIN APP
@@ -199,25 +194,10 @@ def main_app():
         st.markdown("---")
 
         if st.button("🗑️ Delete Account"):
-            st.session_state.confirm_delete = True
-
-        if st.session_state.get("confirm_delete"):
-            st.warning("This action cannot be undone.")
-
-            col1, col2 = st.columns(2)
-
-            with col1:
-                if st.button("Yes, Delete My Account"):
-                    delete_user_account(email)
-                    st.session_state.logged_in = False
-                    st.session_state.confirm_delete = False
-                    st.success("Account deleted.")
-                    st.rerun()
-
-            with col2:
-                if st.button("Cancel"):
-                    st.session_state.confirm_delete = False
-                    st.rerun()
+            delete_user_account(email)
+            st.session_state.logged_in = False
+            st.success("Account deleted.")
+            st.rerun()
 
     st.title("📚 Syllabus Cracker")
 
@@ -235,15 +215,29 @@ def main_app():
             return
 
         raw_text = extract_text_from_upload(uploaded_file)
+
+        if not raw_text.strip():
+            st.error("No text extracted from file.")
+            return
+
         units = parse_syllabus(raw_text)
+
+        if not units:
+            st.error("Could not parse syllabus.")
+            return
+
         schedule = generate_schedule(units, exam_date, hours_per_day)
 
-        st.subheader("Study Plan")
+        if not schedule:
+            st.error("No study plan generated.")
+            return
+
+        st.subheader("📅 Study Plan")
+
         for item in schedule:
             st.markdown(
                 f"**{item['date']}** → {item['topic']} ({item['allocated_hours']} hrs)"
             )
-
 
 # ==========================
 # AUTH SYSTEM
@@ -276,7 +270,7 @@ def auth_system():
 
     st.title("🔐 Login")
 
-    menu = st.radio("", ["Login", "Register", "Forgot Password"])
+    menu = st.radio("Select Option", ["Login", "Register", "Forgot Password"])
 
     if menu == "Login":
         email = st.text_input("Email")
@@ -311,10 +305,9 @@ def auth_system():
                 users[email]["reset_token"] = token
                 save_users(users)
                 send_reset_email(email, token)
-                st.success("Reset link sent to your email.")
+                st.success("Reset link sent.")
             else:
                 st.error("Email not found")
-
 
 if __name__ == "__main__":
     auth_system()
