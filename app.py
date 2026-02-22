@@ -90,21 +90,22 @@ def extract_text_from_upload(uploaded_file):
     raise ValueError("Unsupported file type.")
 
 # ==========================
-# SMART TEXT CHUNKING
+# CHUNK TEXT INTO STUDY BLOCKS
 # ==========================
 
-def split_into_chunks(text, words_per_chunk=1000):
+def split_into_chunks(text, words_per_chunk=800):
     words = text.split()
     chunks = []
 
     for i in range(0, len(words), words_per_chunk):
-        chunk = " ".join(words[i:i+words_per_chunk])
-        chunks.append(chunk)
+        chunk_words = words[i:i+words_per_chunk]
+        chunk_text = " ".join(chunk_words)
+        chunks.append(chunk_text)
 
     return chunks
 
 # ==========================
-# STUDY PLAN GENERATION
+# GENERATE SCHEDULE
 # ==========================
 
 def generate_schedule_from_text(raw_text, exam_date, hours_per_day):
@@ -114,7 +115,7 @@ def generate_schedule_from_text(raw_text, exam_date, hours_per_day):
     if total_days <= 0:
         return []
 
-    chunks = split_into_chunks(raw_text, words_per_chunk=800)
+    chunks = split_into_chunks(raw_text)
 
     if not chunks:
         return []
@@ -126,18 +127,18 @@ def generate_schedule_from_text(raw_text, exam_date, hours_per_day):
 
     for day_offset in range(total_days):
         current_day = today + timedelta(days=day_offset)
-
         daily_chunks = chunks[chunk_index:chunk_index+chunks_per_day]
 
         if not daily_chunks:
             break
 
-        topic_title = f"Study Section {chunk_index+1} - {chunk_index+len(daily_chunks)}"
+        combined_text = "\n\n".join(daily_chunks)
 
         plan.append({
             "date": current_day.isoformat(),
-            "topic": topic_title,
-            "allocated_hours": hours_per_day
+            "title": f"Study Sections {chunk_index+1} - {chunk_index+len(daily_chunks)}",
+            "content": combined_text,
+            "hours": hours_per_day
         })
 
         chunk_index += chunks_per_day
@@ -164,25 +165,10 @@ def main_app():
         st.markdown("---")
 
         if st.button("🗑️ Delete Account"):
-            st.session_state.confirm_delete = True
-
-        if st.session_state.get("confirm_delete"):
-            st.warning("This action cannot be undone.")
-
-            col1, col2 = st.columns(2)
-
-            with col1:
-                if st.button("Yes, Delete My Account"):
-                    delete_user_account(email)
-                    st.session_state.logged_in = False
-                    st.session_state.confirm_delete = False
-                    st.success("Account deleted.")
-                    st.rerun()
-
-            with col2:
-                if st.button("Cancel"):
-                    st.session_state.confirm_delete = False
-                    st.rerun()
+            delete_user_account(email)
+            st.session_state.logged_in = False
+            st.success("Account deleted.")
+            st.rerun()
 
     st.title("📚 Syllabus Cracker")
 
@@ -222,10 +208,15 @@ def main_app():
         st.subheader("📅 Study Plan")
 
         for item in schedule:
-            st.markdown(f"### 📅 {item['date']}")
-            st.markdown(
-                f"- **{item['topic']}** — {item['allocated_hours']} hrs"
-            )
+            st.markdown(f"## 📅 {item['date']}")
+            st.markdown(f"**{item['title']}** — {item['hours']} hrs")
+
+            # Expandable content preview
+            with st.expander("📖 View Topics Covered"):
+                preview_lines = item["content"].split(". ")
+                for line in preview_lines[:8]:  # show first 8 points
+                    st.write("•", line.strip())
+
             st.markdown("---")
 
 # ==========================
@@ -234,20 +225,6 @@ def main_app():
 
 def auth_system():
     users = load_users()
-    token = st.query_params.get("reset_token")
-
-    if token:
-        for email, data in users.items():
-            if data.get("reset_token") == token:
-                st.title("Reset Password")
-                new_password = st.text_input("New Password", type="password")
-
-                if st.button("Update Password"):
-                    users[email]["password"] = hash_password(new_password)
-                    users[email].pop("reset_token", None)
-                    save_users(users)
-                    st.success("Password updated. Please login.")
-                    st.stop()
 
     if "logged_in" not in st.session_state:
         st.session_state.logged_in = False
@@ -258,7 +235,7 @@ def auth_system():
 
     st.title("🔐 Login")
 
-    menu = st.radio("", ["Login", "Register", "Forgot Password"])
+    menu = st.radio("", ["Login", "Register"])
 
     if menu == "Login":
         email = st.text_input("Email")
@@ -283,19 +260,6 @@ def auth_system():
                 users[email] = {"password": hash_password(password)}
                 save_users(users)
                 st.success("Account created. Please login.")
-
-    elif menu == "Forgot Password":
-        email = st.text_input("Enter your registered email")
-
-        if st.button("Send Reset Link"):
-            if email in users:
-                token = secrets.token_urlsafe(16)
-                users[email]["reset_token"] = token
-                save_users(users)
-                send_reset_email(email, token)
-                st.success("Reset link sent to your email.")
-            else:
-                st.error("Email not found")
 
 if __name__ == "__main__":
     auth_system()
