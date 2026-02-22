@@ -1,5 +1,6 @@
 import streamlit as st
 import pdfplumber
+import pypdfium2
 import io
 import json
 import hashlib
@@ -65,16 +66,12 @@ Click the link below to reset your password:
 If you did not request this, ignore this email.
 """)
 
-    try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(SENDER_EMAIL, SENDER_PASSWORD)
-            server.send_message(msg)
-    except smtplib.SMTPAuthenticationError:
-        st.error("Email authentication failed.")
-        st.stop()
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        server.login(SENDER_EMAIL, SENDER_PASSWORD)
+        server.send_message(msg)
 
 # ==========================
-# TEXT EXTRACTION
+# TEXT EXTRACTION (FIXED)
 # ==========================
 
 def extract_text_from_upload(uploaded_file):
@@ -85,16 +82,33 @@ def extract_text_from_upload(uploaded_file):
         return data.decode("utf-8", errors="ignore")
 
     if filename.endswith(".pdf"):
+
+        # Try pdfplumber first
         text = ""
-        with pdfplumber.open(io.BytesIO(data)) as pdf:
-            for page in pdf.pages:
-                text += (page.extract_text() or "") + "\n"
+        try:
+            with pdfplumber.open(io.BytesIO(data)) as pdf:
+                for page in pdf.pages:
+                    text += (page.extract_text() or "") + "\n"
+        except:
+            pass
+
+        # If plumber fails, try pypdfium2 fallback
+        if not text.strip():
+            try:
+                pdf = pypdfium2.PdfDocument(io.BytesIO(data))
+                for i in range(len(pdf)):
+                    page = pdf[i]
+                    textpage = page.get_textpage()
+                    text += textpage.get_text_range() + "\n"
+            except:
+                pass
+
         return text
 
-    raise ValueError("Unsupported file type.")
+    return ""
 
 # ==========================
-# PARSE SYLLABUS (FIXED)
+# PARSE SYLLABUS
 # ==========================
 
 def parse_syllabus(raw_text):
@@ -142,10 +156,6 @@ def parse_syllabus(raw_text):
 # ==========================
 
 def estimate_hours(difficulty):
-    if difficulty == "easy":
-        return 1
-    if difficulty == "hard":
-        return 3
     return 2
 
 def generate_schedule(units, exam_date, hours_per_day):
@@ -217,13 +227,13 @@ def main_app():
         raw_text = extract_text_from_upload(uploaded_file)
 
         if not raw_text.strip():
-            st.error("No text extracted from file.")
+            st.error("This PDF contains no extractable text (possibly scanned).")
             return
 
         units = parse_syllabus(raw_text)
 
         if not units:
-            st.error("Could not parse syllabus.")
+            st.error("Could not parse syllabus structure.")
             return
 
         schedule = generate_schedule(units, exam_date, hours_per_day)
@@ -246,21 +256,6 @@ def main_app():
 def auth_system():
     users = load_users()
 
-    token = st.query_params.get("reset_token")
-
-    if token:
-        for email, data in users.items():
-            if data.get("reset_token") == token:
-                st.title("Reset Password")
-                new_password = st.text_input("New Password", type="password")
-
-                if st.button("Update Password"):
-                    users[email]["password"] = hash_password(new_password)
-                    users[email].pop("reset_token", None)
-                    save_users(users)
-                    st.success("Password updated. Please login.")
-                    st.stop()
-
     if "logged_in" not in st.session_state:
         st.session_state.logged_in = False
 
@@ -270,7 +265,7 @@ def auth_system():
 
     st.title("🔐 Login")
 
-    menu = st.radio("Select Option", ["Login", "Register", "Forgot Password"])
+    menu = st.radio("Select Option", ["Login", "Register"])
 
     if menu == "Login":
         email = st.text_input("Email")
@@ -295,19 +290,6 @@ def auth_system():
                 users[email] = {"password": hash_password(password)}
                 save_users(users)
                 st.success("Account created. Please login.")
-
-    elif menu == "Forgot Password":
-        email = st.text_input("Enter your registered email")
-
-        if st.button("Send Reset Link"):
-            if email in users:
-                token = secrets.token_urlsafe(16)
-                users[email]["reset_token"] = token
-                save_users(users)
-                send_reset_email(email, token)
-                st.success("Reset link sent.")
-            else:
-                st.error("Email not found")
 
 if __name__ == "__main__":
     auth_system()
