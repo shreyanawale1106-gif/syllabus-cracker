@@ -13,13 +13,10 @@ from datetime import date, timedelta
 # ==========================
 
 USER_FILE = "users.json"
-
-# ✅ YOUR REAL STREAMLIT APP URL
 APP_URL = "https://syllabus-cracker-nywxanr28dajtfkpffsjyf.streamlit.app"
 
 SENDER_EMAIL = st.secrets.get("SENDER_EMAIL")
 SENDER_PASSWORD = st.secrets.get("SENDER_PASSWORD")
-
 
 # ==========================
 # USER MANAGEMENT
@@ -45,7 +42,6 @@ def delete_user_account(email):
         del users[email]
         save_users(users)
 
-
 # ==========================
 # SEND RESET EMAIL
 # ==========================
@@ -69,14 +65,9 @@ Click the link below to reset your password:
 If you did not request this, ignore this email.
 """)
 
-    try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(SENDER_EMAIL, SENDER_PASSWORD)
-            server.send_message(msg)
-    except smtplib.SMTPAuthenticationError:
-        st.error("Email authentication failed. Check your Gmail App Password.")
-        st.stop()
-
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        server.login(SENDER_EMAIL, SENDER_PASSWORD)
+        server.send_message(msg)
 
 # ==========================
 # TEXT EXTRACTION
@@ -98,9 +89,8 @@ def extract_text_from_upload(uploaded_file):
 
     raise ValueError("Unsupported file type.")
 
-
 # ==========================
-# PARSE SYLLABUS
+# SMART SYLLABUS PARSER
 # ==========================
 
 def parse_syllabus(raw_text):
@@ -111,25 +101,31 @@ def parse_syllabus(raw_text):
     for line in lines:
         lower = line.lower()
 
-        if lower.startswith("unit") or lower.startswith("module"):
+        if (
+            lower.startswith("unit")
+            or lower.startswith("module")
+            or lower.startswith("chapter")
+        ):
             if current_unit:
                 units.append(current_unit)
-            current_unit = {"unit_title": line, "topics": []}
 
-        elif line.startswith(("-", "*", "•")):
-            if current_unit is None:
-                current_unit = {"unit_title": "General", "topics": []}
-            current_unit["topics"].append({
-                "topic": line[1:].strip(),
-                "difficulty": "medium"
-            })
+            current_unit = {
+                "unit_title": line,
+                "topics": [{
+                    "topic": line,
+                    "difficulty": "medium"
+                }]
+            }
 
         else:
             if current_unit is None:
-                current_unit = {"unit_title": "General", "topics": []}
-            if current_unit["topics"]:
-                current_unit["topics"][-1]["topic"] += " " + line
-            else:
+                current_unit = {
+                    "unit_title": "General",
+                    "topics": []
+                }
+
+            # Avoid massive paragraphs
+            if len(line) < 120:
                 current_unit["topics"].append({
                     "topic": line,
                     "difficulty": "medium"
@@ -140,9 +136,8 @@ def parse_syllabus(raw_text):
 
     return units
 
-
 # ==========================
-# STUDY PLAN
+# STUDY PLAN GENERATION
 # ==========================
 
 def estimate_hours(difficulty):
@@ -155,20 +150,17 @@ def estimate_hours(difficulty):
 def generate_schedule(units, exam_date, hours_per_day):
     today = date.today()
     current_day = today
-    remaining_hours = hours_per_day
     plan = []
 
     for unit in units:
         for topic in unit["topics"]:
             hours_needed = estimate_hours(topic["difficulty"])
 
-            while hours_needed > 0 and current_day <= exam_date:
-                if remaining_hours <= 0:
-                    current_day += timedelta(days=1)
-                    remaining_hours = hours_per_day
-                    continue
+            while hours_needed > 0:
+                if current_day > exam_date:
+                    return plan
 
-                allocated = min(hours_needed, remaining_hours)
+                allocated = min(hours_needed, hours_per_day)
 
                 plan.append({
                     "date": current_day.isoformat(),
@@ -177,10 +169,9 @@ def generate_schedule(units, exam_date, hours_per_day):
                 })
 
                 hours_needed -= allocated
-                remaining_hours -= allocated
+                current_day += timedelta(days=1)
 
     return plan
-
 
 # ==========================
 # MAIN APP
@@ -221,29 +212,56 @@ def main_app():
 
     st.title("📚 Syllabus Cracker")
 
-    uploaded_file = st.file_uploader("Upload Syllabus (.pdf or .txt)", type=["pdf", "txt"])
+    uploaded_file = st.file_uploader(
+        "Upload Syllabus (.pdf or .txt)",
+        type=["pdf", "txt"]
+    )
 
     col1, col2 = st.columns(2)
     with col1:
         exam_date = st.date_input("Exam Date", min_value=date.today())
     with col2:
-        hours_per_day = st.slider("Study hours per day", 1.0, 10.0, 2.0, 0.5)
+        hours_per_day = st.slider(
+            "Study hours per day",
+            1.0,
+            10.0,
+            2.0,
+            0.5
+        )
 
     if st.button("Generate Study Plan"):
+
         if uploaded_file is None:
             st.warning("Upload a syllabus file.")
             return
 
         raw_text = extract_text_from_upload(uploaded_file)
+
+        if not raw_text.strip():
+            st.error("No text extracted from file.")
+            return
+
         units = parse_syllabus(raw_text)
         schedule = generate_schedule(units, exam_date, hours_per_day)
 
-        st.subheader("Study Plan")
-        for item in schedule:
-            st.markdown(
-                f"**{item['date']}** → {item['topic']} ({item['allocated_hours']} hrs)"
-            )
+        if not schedule:
+            st.error("Could not generate schedule. Check exam date or syllabus format.")
+            return
 
+        st.subheader("📅 Study Plan")
+
+        # Group by date
+        grouped = {}
+        for item in schedule:
+            grouped.setdefault(item["date"], []).append(item)
+
+        for day, tasks in grouped.items():
+            st.markdown(f"### 📅 {day}")
+            for task in tasks:
+                st.markdown(
+                    f"- **{task['topic']}** — {task['allocated_hours']} hrs"
+                )
+            st.markdown("---")
 
 # ==========================
 # AUTH SYSTEM
@@ -251,7 +269,6 @@ def main_app():
 
 def auth_system():
     users = load_users()
-
     token = st.query_params.get("reset_token")
 
     if token:
@@ -314,7 +331,6 @@ def auth_system():
                 st.success("Reset link sent to your email.")
             else:
                 st.error("Email not found")
-
 
 if __name__ == "__main__":
     auth_system()
