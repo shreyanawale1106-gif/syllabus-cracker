@@ -96,12 +96,10 @@ def extract_text_from_upload(uploaded_file):
 
 
 # ---------------------------
-# TOPIC EXTRACTION (FIXED)
+# TOPIC EXTRACTION
 # ---------------------------
 
 def extract_topics(text):
-
-    import re
 
     topics = []
 
@@ -114,10 +112,8 @@ def extract_topics(text):
         if len(clean) < 5:
             continue
 
-        # remove numbering like 1. 2) etc
         clean = re.sub(r"^[0-9]+[\.\)]\s*", "", clean)
 
-        # split using comma, semicolon, colon
         parts = re.split(r",|;|:", clean)
 
         for part in parts:
@@ -127,7 +123,6 @@ def extract_topics(text):
             if len(topic) > 5:
                 topics.append(topic)
 
-    # fallback if no topics detected
     if len(topics) == 0:
 
         words = text.split()
@@ -140,6 +135,7 @@ def extract_topics(text):
 
     return topics
 
+
 # ---------------------------
 # SCHEDULE GENERATOR
 # ---------------------------
@@ -147,7 +143,6 @@ def extract_topics(text):
 def generate_schedule(subject_topics, exam_date, hours_per_day):
 
     today = date.today()
-
     total_days = (exam_date - today).days + 1
 
     if total_days <= 0:
@@ -198,6 +193,7 @@ def generate_schedule(subject_topics, exam_date, hours_per_day):
 
     return schedule
 
+
 # ---------------------------
 # MAIN APP
 # ---------------------------
@@ -238,57 +234,57 @@ def main_app():
     with col2:
         hours_per_day = st.slider("Hours per day", 1.0, 10.0, 4.0, 0.5)
 
-if st.button("Generate Study Plan"):
+    # ---- GENERATE PLAN BUTTON ----
 
-    if not uploaded_files:
-    st.warning("Upload syllabus files")
-    return
+    if st.button("Generate Study Plan"):
 
-    subject_topics = {}
+        if not uploaded_files:
+            st.warning("Upload syllabus files")
+            return
 
-    for file in uploaded_files:
+        subject_topics = {}
 
-        subject = file.name.split(".")[0]
+        for file in uploaded_files:
 
-        text = extract_text_from_upload(file)
+            subject = file.name.split(".")[0]
 
-        topics = extract_topics(text)
+            text = extract_text_from_upload(file)
 
-        if len(topics) == 0:
-            st.warning(f"No topics detected in {subject}")
-        else:
-            subject_topics[subject] = topics
+            topics = extract_topics(text)
 
+            if len(topics) == 0:
+                st.warning(f"No topics detected in {subject}")
+            else:
+                subject_topics[subject] = topics
 
-    schedule = generate_schedule(
-        subject_topics,
-        exam_date,
-        hours_per_day
-    )
+        schedule = generate_schedule(
+            subject_topics,
+            exam_date,
+            hours_per_day
+        )
 
+        if not schedule:
+            st.error("Could not generate schedule")
+            return
 
-    if not schedule:
-        st.error("Could not generate schedule")
-        return
+        st.subheader("📅 Study Plan")
 
+        for day in schedule:
 
-    st.subheader("📅 Study Plan")
+            st.markdown(f"## 📅 {day['date']}")
 
-    for day in schedule:
+            for t in day["topics"]:
 
-        st.markdown(f"## 📅 {day['date']}")
+                st.write(
+                    f"📘 **{t['subject']}** — {t['topic']} "
+                    f"⏱ {t['hours']} hrs"
+                )
 
-        for t in day["topics"]:
+            st.markdown("---")
 
-            st.write(
-                f"📘 **{t['subject']}** — {t['topic']} "
-                f"⏱ {t['hours']} hrs"
-            )
-
-        st.markdown("---")
 
 # ---------------------------
-# AUTH
+# AUTH SYSTEM
 # ---------------------------
 
 def auth_system():
@@ -305,10 +301,7 @@ def auth_system():
 
                 st.title("Reset Password")
 
-                new_password = st.text_input(
-                    "New Password",
-                    type="password"
-                )
+                new_password = st.text_input("New Password", type="password")
 
                 if st.button("Update Password"):
 
@@ -357,13 +350,8 @@ def auth_system():
             if email in users:
                 st.error("User exists")
             else:
-
-                users[email] = {
-                    "password": hash_password(password)
-                }
-
+                users[email] = {"password": hash_password(password)}
                 save_users(users)
-
                 st.success("Account created")
 
     elif menu == "Forgot Password":
