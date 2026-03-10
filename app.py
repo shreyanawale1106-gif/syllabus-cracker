@@ -123,7 +123,7 @@ def extract_topics(text):
             if len(topic) > 5:
                 topics.append(topic)
 
-    if len(topics) == 0:
+    if len(topics) < 3:
 
         words = text.split()
 
@@ -150,9 +150,12 @@ def generate_schedule(subject_topics, exam_date, hours_per_day):
 
     subjects = list(subject_topics.keys())
 
-    schedule = []
+schedule = []
 
-    hours_per_subject = round(hours_per_day / len(subjects), 2)
+if len(subjects) == 0:
+    return []
+
+hours_per_subject = round(hours_per_day / len(subjects), 2)
 
     day = 0
 
@@ -257,11 +260,15 @@ def main_app():
             else:
                 subject_topics[subject] = topics
 
+        if len(subject_topics) == 0:
+            st.error("No topics could be extracted from the uploaded files.")
+            return
+
         schedule = generate_schedule(
             subject_topics,
             exam_date,
             hours_per_day
-        )
+)
 
         if not schedule:
             st.error("Could not generate schedule")
