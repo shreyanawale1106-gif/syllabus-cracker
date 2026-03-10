@@ -49,7 +49,7 @@ def delete_user_account(email):
 def send_reset_email(to_email, token):
 
     if not SENDER_EMAIL or not SENDER_PASSWORD:
-        st.error("Email secrets not configured properly in Streamlit Cloud.")
+        st.error("Email secrets not configured.")
         st.stop()
 
     reset_link = f"{APP_URL}/?reset_token={token}"
@@ -71,7 +71,6 @@ If you did not request this, ignore this email.
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             server.login(SENDER_EMAIL, SENDER_PASSWORD)
             server.send_message(msg)
-
     except Exception as e:
         st.error(f"Email sending failed: {str(e)}")
         st.stop()
@@ -89,26 +88,31 @@ def extract_text_from_upload(uploaded_file):
         return data.decode("utf-8", errors="ignore")
 
     if filename.endswith(".pdf"):
+
         text = ""
+
         with pdfplumber.open(io.BytesIO(data)) as pdf:
             for page in pdf.pages:
                 text += (page.extract_text() or "") + "\n"
+
         return text
 
     raise ValueError("Unsupported file type.")
 
 # ==========================
-# SPLIT INTO STUDY CHUNKS
+# SPLIT INTO TOPIC CHUNKS
 # ==========================
 
-def split_into_chunks(text, words_per_chunk=800):
+def split_into_chunks(text, words_per_chunk=200):
 
     words = text.split()
     chunks = []
 
     for i in range(0, len(words), words_per_chunk):
+
         chunk_words = words[i:i+words_per_chunk]
         chunk_text = " ".join(chunk_words)
+
         chunks.append(chunk_text)
 
     return chunks
@@ -130,32 +134,31 @@ def generate_schedule_multiple_subjects(subjects_text, exam_date, hours_per_day)
     for subject, text in subjects_text.items():
         subject_chunks[subject] = split_into_chunks(text)
 
-    subject_list = list(subject_chunks.keys())
+    subjects = list(subject_chunks.keys())
+
+    hours_per_subject = round(hours_per_day / len(subjects), 2)
 
     plan = []
-    subject_index = 0
 
     for day_offset in range(total_days):
 
         current_day = today + timedelta(days=day_offset)
 
-        subject = subject_list[subject_index]
-        chunks = subject_chunks[subject]
+        for subject in subjects:
 
-        if not chunks:
-            subject_index = (subject_index + 1) % len(subject_list)
-            continue
+            chunks = subject_chunks[subject]
 
-        chunk = chunks.pop(0)
+            if not chunks:
+                continue
 
-        plan.append({
-            "date": current_day.isoformat(),
-            "title": f"{subject} Study",
-            "content": chunk,
-            "hours": hours_per_day
-        })
+            topic = chunks.pop(0)
 
-        subject_index = (subject_index + 1) % len(subject_list)
+            plan.append({
+                "date": current_day.isoformat(),
+                "subject": subject,
+                "content": topic,
+                "hours": hours_per_subject
+            })
 
     return plan
 
@@ -187,6 +190,7 @@ def main_app():
             col1, col2 = st.columns(2)
 
             with col1:
+
                 if st.button("Yes, Delete My Account"):
 
                     delete_user_account(email)
@@ -196,6 +200,7 @@ def main_app():
                     st.rerun()
 
             with col2:
+
                 if st.button("Cancel"):
                     st.session_state.confirm_delete = False
                     st.rerun()
@@ -234,7 +239,7 @@ def main_app():
                 subjects_text[subject_name] = text
 
         if not subjects_text:
-            st.error("No readable content found in uploaded files.")
+            st.error("No readable text found.")
             return
 
         schedule = generate_schedule_multiple_subjects(
@@ -249,19 +254,24 @@ def main_app():
 
         st.subheader("📅 Study Plan")
 
+        current_date = ""
+
         for item in schedule:
 
-            st.markdown(f"## 📅 {item['date']}")
-            st.markdown(f"**{item['title']}** — {item['hours']} hrs")
+            if current_date != item["date"]:
+                current_date = item["date"]
+                st.markdown(f"## 📅 {current_date}")
 
-            with st.expander("📖 View Topics Covered"):
+            st.markdown(
+                f"**{item['subject']}** — {item['hours']} hrs"
+            )
+
+            with st.expander("📖 Topics Covered"):
 
                 sentences = item["content"].split(". ")
 
-                for sentence in sentences[:10]:
+                for sentence in sentences[:8]:
                     st.write("•", sentence.strip())
-
-            st.markdown("---")
 
 # ==========================
 # AUTH SYSTEM
@@ -286,6 +296,7 @@ def auth_system():
                 if st.button("Update Password"):
 
                     users[email]["password"] = hash_password(new_password)
+
                     users[email].pop("reset_token", None)
 
                     save_users(users)
@@ -332,7 +343,9 @@ def auth_system():
 
             else:
                 users[email] = {"password": hash_password(password)}
+
                 save_users(users)
+
                 st.success("Account created. Please login.")
 
     elif menu == "Forgot Password":
