@@ -242,7 +242,7 @@ if st.button("Generate Study Plan"):
 
     if not uploaded_files:
         st.warning("Upload syllabus files")
-    return
+            return
 
     subject_topics = {}
 
