@@ -104,16 +104,29 @@ def extract_text_from_upload(uploaded_file):
 
 def split_into_topics(text):
 
-    lines = text.split("\n")
+    import re
 
     topics = []
+
+    # split by lines
+    lines = text.split("\n")
 
     for line in lines:
 
         clean = line.strip()
 
-        if len(clean) > 10:
-            topics.append(clean)
+        if len(clean) < 5:
+            continue
+
+        # split further by comma / semicolon
+        parts = re.split(r",|;", clean)
+
+        for part in parts:
+
+            topic = part.strip()
+
+            if len(topic) > 5:
+                topics.append(topic)
 
     return topics
 
