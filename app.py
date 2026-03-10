@@ -150,12 +150,13 @@ def generate_schedule(subject_topics, exam_date, hours_per_day):
 
     subjects = list(subject_topics.keys())
 
-schedule = []
+    schedule = []
 
-if len(subjects) == 0:
-    return []
+    # Prevent division by zero
+    if len(subjects) == 0:
+        return []
 
-hours_per_subject = round(hours_per_day / len(subjects), 2)
+    hours_per_subject = round(hours_per_day / len(subjects), 2)
 
     day = 0
 
