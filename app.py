@@ -149,7 +149,7 @@ def generate_schedule_multiple_subjects(subjects_text, exam_date, hours_per_day)
 
     subjects = list(subject_topics.keys())
 
-    hours_per_subject = round(hours_per_day / len(subjects), 2)
+    hours_per_subject = round(hours_per_day / max(len(subjects),1), 2)
 
     plan = []
 
