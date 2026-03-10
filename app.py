@@ -241,7 +241,7 @@ def main_app():
 if st.button("Generate Study Plan"):
 
     if not uploaded_files:
-        st.warning("Upload syllabus files")
+        st.warning("Upload syllabus files"):
             return
 
     subject_topics = {}
