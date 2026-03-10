@@ -238,52 +238,54 @@ def main_app():
     with col2:
         hours_per_day = st.slider("Hours per day", 1.0, 10.0, 4.0, 0.5)
 
-    if st.button("Generate Study Plan"):
+if st.button("Generate Study Plan"):
 
-        if not uploaded_files:
-            st.warning("Upload syllabus files")
-            return
+    if not uploaded_files:
+        st.warning("Upload syllabus files")
+        return
 
-       subject_topics = {}
+    subject_topics = {}
 
-for file in uploaded_files:
+    for file in uploaded_files:
 
-    subject = file.name.split(".")[0]
+        subject = file.name.split(".")[0]
 
-    text = extract_text_from_upload(file)
+        text = extract_text_from_upload(file)
 
-    topics = extract_topics(text)
+        topics = extract_topics(text)
 
-    if len(topics) == 0:
-        st.warning(f"No topics detected in {subject}")
-    else:
-        subject_topics[subject] = topics
+        if len(topics) == 0:
+            st.warning(f"No topics detected in {subject}")
+        else:
+            subject_topics[subject] = topics
 
-        schedule = generate_schedule(
-            subject_topics,
-            exam_date,
-            hours_per_day
-        )
 
-        if not schedule:
-            st.error("Could not generate schedule")
-            return
+    schedule = generate_schedule(
+        subject_topics,
+        exam_date,
+        hours_per_day
+    )
 
-        st.subheader("📅 Study Plan")
 
-        for day in schedule:
+    if not schedule:
+        st.error("Could not generate schedule")
+        return
 
-            st.markdown(f"## 📅 {day['date']}")
 
-            for t in day["topics"]:
+    st.subheader("📅 Study Plan")
 
-                st.write(
-                    f"📘 **{t['subject']}** — {t['topic']} "
-                    f"⏱ {t['hours']} hrs"
-                )
+    for day in schedule:
 
-            st.markdown("---")
+        st.markdown(f"## 📅 {day['date']}")
 
+        for t in day["topics"]:
+
+            st.write(
+                f"📘 **{t['subject']}** — {t['topic']} "
+                f"⏱ {t['hours']} hrs"
+            )
+
+        st.markdown("---")
 
 # ---------------------------
 # AUTH
