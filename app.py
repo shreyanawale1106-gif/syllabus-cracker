@@ -101,6 +101,8 @@ def extract_text_from_upload(uploaded_file):
 
 def extract_topics(text):
 
+    import re
+
     topics = []
 
     lines = text.split("\n")
@@ -109,24 +111,34 @@ def extract_topics(text):
 
         clean = line.strip()
 
-        if len(clean) < 6:
+        if len(clean) < 5:
             continue
 
-        # remove numbering
-        clean = re.sub(r"^[0-9]+[\.\)]", "", clean)
+        # remove numbering like 1. 2) etc
+        clean = re.sub(r"^[0-9]+[\.\)]\s*", "", clean)
 
-        # split by comma / semicolon
+        # split using comma, semicolon, colon
         parts = re.split(r",|;|:", clean)
 
         for part in parts:
 
             topic = part.strip()
 
-            if len(topic) > 6:
+            if len(topic) > 5:
                 topics.append(topic)
 
-    return topics
+    # fallback if no topics detected
+    if len(topics) == 0:
 
+        words = text.split()
+
+        chunk_size = 40
+
+        for i in range(0, len(words), chunk_size):
+            chunk = " ".join(words[i:i+chunk_size])
+            topics.append(chunk)
+
+    return topics
 
 # ---------------------------
 # SCHEDULE GENERATOR
@@ -135,54 +147,56 @@ def extract_topics(text):
 def generate_schedule(subject_topics, exam_date, hours_per_day):
 
     today = date.today()
+
     total_days = (exam_date - today).days + 1
 
     if total_days <= 0:
         return []
 
-    all_topics = []
-
-    for subject, topics in subject_topics.items():
-        for t in topics:
-            all_topics.append((subject, t))
-
-    if not all_topics:
-        return []
-
-    topics_per_day = max(1, len(all_topics) // total_days)
-
-    hours_per_topic = round(hours_per_day / topics_per_day, 2)
+    subjects = list(subject_topics.keys())
 
     schedule = []
-    topic_index = 0
 
-    for day in range(total_days):
+    hours_per_subject = round(hours_per_day / len(subjects), 2)
 
-        day_date = today + timedelta(days=day)
+    day = 0
 
-        daily = all_topics[topic_index:topic_index+topics_per_day]
+    while True:
 
-        if not daily:
+        if day >= total_days:
             break
 
-        entries = []
+        date_value = today + timedelta(days=day)
 
-        for subject, topic in daily:
-            entries.append({
+        day_plan = []
+
+        finished = 0
+
+        for subject in subjects:
+
+            if len(subject_topics[subject]) == 0:
+                finished += 1
+                continue
+
+            topic = subject_topics[subject].pop(0)
+
+            day_plan.append({
                 "subject": subject,
                 "topic": topic,
-                "hours": hours_per_topic
+                "hours": hours_per_subject
             })
 
+        if finished == len(subjects):
+            break
+
         schedule.append({
-            "date": day_date.isoformat(),
-            "topics": entries
+            "date": date_value.isoformat(),
+            "topics": day_plan
         })
 
-        topic_index += topics_per_day
+        day += 1
 
     return schedule
-
 
 # ---------------------------
 # MAIN APP
@@ -230,17 +244,20 @@ def main_app():
             st.warning("Upload syllabus files")
             return
 
-        subject_topics = {}
+       subject_topics = {}
 
-        for file in uploaded_files:
+for file in uploaded_files:
 
-            subject = file.name.split(".")[0]
+    subject = file.name.split(".")[0]
 
-            text = extract_text_from_upload(file)
+    text = extract_text_from_upload(file)
 
-            topics = extract_topics(text)
+    topics = extract_topics(text)
 
-            subject_topics[subject] = topics
+    if len(topics) == 0:
+        st.warning(f"No topics detected in {subject}")
+    else:
+        subject_topics[subject] = topics
 
         schedule = generate_schedule(
             subject_topics,
