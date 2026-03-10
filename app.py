@@ -5,9 +5,12 @@ import json
 import hashlib
 import secrets
 import smtplib
-import re
 from email.message import EmailMessage
 from datetime import date, timedelta
+
+# ==========================
+# CONFIG
+# ==========================
 
 USER_FILE = "users.json"
 APP_URL = "https://syllabus-cracker-nywxanr28dajtfkpffsjyf.streamlit.app"
@@ -15,10 +18,9 @@ APP_URL = "https://syllabus-cracker-nywxanr28dajtfkpffsjyf.streamlit.app"
 SENDER_EMAIL = st.secrets.get("SENDER_EMAIL")
 SENDER_PASSWORD = st.secrets.get("SENDER_PASSWORD")
 
-
-# ---------------------------
+# ==========================
 # USER MANAGEMENT
-# ---------------------------
+# ==========================
 
 def load_users():
     try:
@@ -27,15 +29,12 @@ def load_users():
     except:
         return {}
 
-
 def save_users(users):
     with open(USER_FILE, "w") as f:
         json.dump(users, f)
 
-
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
-
 
 def delete_user_account(email):
     users = load_users()
@@ -43,10 +42,9 @@ def delete_user_account(email):
         del users[email]
         save_users(users)
 
-
-# ---------------------------
+# ==========================
 # EMAIL RESET
-# ---------------------------
+# ==========================
 
 def send_reset_email(to_email, token):
 
@@ -58,7 +56,7 @@ def send_reset_email(to_email, token):
     msg["To"] = to_email
 
     msg.set_content(f"""
-Reset your password:
+Click below to reset your password:
 
 {reset_link}
 """)
@@ -67,10 +65,9 @@ Reset your password:
         server.login(SENDER_EMAIL, SENDER_PASSWORD)
         server.send_message(msg)
 
-
-# ---------------------------
+# ==========================
 # TEXT EXTRACTION
-# ---------------------------
+# ==========================
 
 def extract_text_from_upload(uploaded_file):
 
@@ -86,121 +83,103 @@ def extract_text_from_upload(uploaded_file):
 
         with pdfplumber.open(io.BytesIO(data)) as pdf:
             for page in pdf.pages:
-                t = page.extract_text()
-                if t:
-                    text += t + "\n"
+                text += (page.extract_text() or "") + "\n"
 
         return text
 
     return ""
 
+# ==========================
+# SPLIT TEXT INTO CHUNKS
+# ==========================
 
-# ---------------------------
-# TOPIC EXTRACTION
-# ---------------------------
+def split_into_chunks(text, words_per_chunk=600):
 
-def extract_topics(text):
+    words = text.split()
 
-    topics = []
+    chunks = []
 
-    lines = text.split("\n")
+    for i in range(0, len(words), words_per_chunk):
 
-    for line in lines:
+        chunk = " ".join(words[i:i+words_per_chunk])
 
-        clean = line.strip()
+        chunks.append(chunk)
 
-        if len(clean) < 5:
-            continue
+    return chunks
 
-        clean = re.sub(r"^[0-9]+[\.\)]\s*", "", clean)
+# ==========================
+# GENERATE DAILY SCHEDULE
+# ==========================
 
-        parts = re.split(r",|;|:", clean)
-
-        for part in parts:
-
-            topic = part.strip()
-
-            if len(topic) > 5:
-                topics.append(topic)
-
-    if len(topics) < 3:
-
-        words = text.split()
-
-        chunk_size = 40
-
-        for i in range(0, len(words), chunk_size):
-            chunk = " ".join(words[i:i+chunk_size])
-            topics.append(chunk)
-
-    return topics
-
-
-# ---------------------------
-# SCHEDULE GENERATOR
-# ---------------------------
-
-def generate_schedule(subject_topics, exam_date, hours_per_day):
+def generate_schedule(subject_chunks, exam_date, hours_per_day):
 
     today = date.today()
+
     total_days = (exam_date - today).days + 1
 
     if total_days <= 0:
         return []
 
-    subjects = list(subject_topics.keys())
+    subjects = list(subject_chunks.keys())
 
-    schedule = []
-
-    # Prevent division by zero
     if len(subjects) == 0:
         return []
 
-    hours_per_subject = round(hours_per_day / len(subjects), 2)
+    schedule = []
 
-    day = 0
+    start_hour = 9
 
-    while True:
+    for day_index in range(total_days):
 
-        if day >= total_days:
-            break
-
-        date_value = today + timedelta(days=day)
+        current_day = today + timedelta(days=day_index)
 
         day_plan = []
 
-        finished = 0
+        current_hour = start_hour
 
         for subject in subjects:
 
-            if len(subject_topics[subject]) == 0:
-                finished += 1
+            if not subject_chunks[subject]:
                 continue
 
-            topic = subject_topics[subject].pop(0)
+            chunk = subject_chunks[subject].pop(0)
+
+            session_hours = max(1, hours_per_day / len(subjects))
+
+            end_hour = int(current_hour + session_hours)
+
+            time_slot = f"{int(current_hour):02d}:00 - {end_hour:02d}:00"
 
             day_plan.append({
+                "time": time_slot,
                 "subject": subject,
-                "topic": topic,
-                "hours": hours_per_subject
+                "content": chunk
             })
 
-        if finished == len(subjects):
+            current_hour = end_hour
+
+        if not day_plan:
             break
 
         schedule.append({
-            "date": date_value.isoformat(),
-            "topics": day_plan
+            "date": current_day.isoformat(),
+            "tasks": day_plan
         })
 
-        day += 1
+        finished = True
+        for s in subjects:
+            if subject_chunks[s]:
+                finished = False
+                break
+
+        if finished:
+            break
 
     return schedule
 
-
-# ---------------------------
+# ==========================
 # MAIN APP
-# ---------------------------
+# ==========================
 
 def main_app():
 
@@ -236,9 +215,7 @@ def main_app():
         exam_date = st.date_input("Exam Date", min_value=date.today())
 
     with col2:
-        hours_per_day = st.slider("Hours per day", 1.0, 10.0, 4.0, 0.5)
-
-    # ---- GENERATE PLAN BUTTON ----
+        hours_per_day = st.slider("Study hours per day", 1.0, 10.0, 4.0, 0.5)
 
     if st.button("Generate Study Plan"):
 
@@ -246,7 +223,7 @@ def main_app():
             st.warning("Upload syllabus files")
             return
 
-        subject_topics = {}
+        subject_chunks = {}
 
         for file in uploaded_files:
 
@@ -254,22 +231,19 @@ def main_app():
 
             text = extract_text_from_upload(file)
 
-            topics = extract_topics(text)
+            if not text.strip():
+                st.warning(f"No text extracted from {subject}")
+                continue
 
-            if len(topics) == 0:
-                st.warning(f"No topics detected in {subject}")
-            else:
-                subject_topics[subject] = topics
+            chunks = split_into_chunks(text)
 
-        if len(subject_topics) == 0:
-            st.error("No topics could be extracted from the uploaded files.")
-            return
+            subject_chunks[subject] = chunks
 
         schedule = generate_schedule(
-            subject_topics,
+            subject_chunks,
             exam_date,
             hours_per_day
-)
+        )
 
         if not schedule:
             st.error("Could not generate schedule")
@@ -279,21 +253,26 @@ def main_app():
 
         for day in schedule:
 
-            st.markdown(f"## 📅 {day['date']}")
+            st.markdown(f"# 📅 {day['date']}")
 
-            for t in day["topics"]:
+            for task in day["tasks"]:
 
-                st.write(
-                    f"📘 **{t['subject']}** — {t['topic']} "
-                    f"⏱ {t['hours']} hrs"
+                st.markdown(
+                    f"### ⏰ {task['time']} — **{task['subject']}**"
                 )
+
+                with st.expander("Topics / Content"):
+
+                    sentences = task["content"].split(". ")
+
+                    for s in sentences[:8]:
+                        st.write("•", s.strip())
 
             st.markdown("---")
 
-
-# ---------------------------
+# ==========================
 # AUTH SYSTEM
-# ---------------------------
+# ==========================
 
 def auth_system():
 
@@ -319,6 +298,7 @@ def auth_system():
                     save_users(users)
 
                     st.success("Password updated")
+
                     st.stop()
 
     if "logged_in" not in st.session_state:
@@ -335,6 +315,7 @@ def auth_system():
     if menu == "Login":
 
         email = st.text_input("Email")
+
         password = st.text_input("Password", type="password")
 
         if st.button("Login"):
@@ -351,15 +332,22 @@ def auth_system():
     elif menu == "Register":
 
         email = st.text_input("Email")
+
         password = st.text_input("Password", type="password")
 
         if st.button("Create Account"):
 
             if email in users:
                 st.error("User exists")
+
             else:
-                users[email] = {"password": hash_password(password)}
+
+                users[email] = {
+                    "password": hash_password(password)
+                }
+
                 save_users(users)
+
                 st.success("Account created")
 
     elif menu == "Forgot Password":
@@ -383,6 +371,9 @@ def auth_system():
             else:
                 st.error("Email not found")
 
+# ==========================
+# RUN APP
+# ==========================
 
 if __name__ == "__main__":
     auth_system()
