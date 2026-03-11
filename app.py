@@ -108,7 +108,7 @@ def split_into_chunks(text, words_per_chunk=600):
     return chunks
 
 # ==========================
-# GENERATE DAILY SCHEDULE
+# GENERATE STUDY SCHEDULE
 # ==========================
 
 def generate_schedule(subject_chunks, exam_date, hours_per_day):
@@ -127,7 +127,8 @@ def generate_schedule(subject_chunks, exam_date, hours_per_day):
 
     schedule = []
 
-    start_hour = 9
+    STUDY_BLOCK = 1.5
+    BREAK_TIME = 0.25
 
     for day_index in range(total_days):
 
@@ -135,28 +136,77 @@ def generate_schedule(subject_chunks, exam_date, hours_per_day):
 
         day_plan = []
 
-        current_hour = start_hour
+        current_time = 9.0
+        studied_hours = 0
+        subject_index = 0
 
-        for subject in subjects:
+        while studied_hours < hours_per_day:
+
+            subject = subjects[subject_index % len(subjects)]
 
             if not subject_chunks[subject]:
+                subject_index += 1
                 continue
 
             chunk = subject_chunks[subject].pop(0)
 
-            session_hours = max(1, hours_per_day / len(subjects))
+            end_time = current_time + STUDY_BLOCK
 
-            end_hour = int(current_hour + session_hours)
+            start_h = int(current_time)
+            start_m = int((current_time % 1) * 60)
 
-            time_slot = f"{int(current_hour):02d}:00 - {end_hour:02d}:00"
+            end_h = int(end_time)
+            end_m = int((end_time % 1) * 60)
+
+            time_slot = f"{start_h:02d}:{start_m:02d} - {end_h:02d}:{end_m:02d}"
 
             day_plan.append({
+                "type": "study",
                 "time": time_slot,
                 "subject": subject,
                 "content": chunk
             })
 
-            current_hour = end_hour
+            studied_hours += STUDY_BLOCK
+            current_time = end_time
+
+            if studied_hours >= hours_per_day:
+                break
+
+            # break
+            break_end = current_time + BREAK_TIME
+
+            b_start_h = int(current_time)
+            b_start_m = int((current_time % 1) * 60)
+
+            b_end_h = int(break_end)
+            b_end_m = int((break_end % 1) * 60)
+
+            break_slot = f"{b_start_h:02d}:{b_start_m:02d} - {b_end_h:02d}:{b_end_m:02d}"
+
+            day_plan.append({
+                "type": "break",
+                "time": break_slot
+            })
+
+            current_time = break_end
+
+            # lunch break
+            if 12 <= current_time <= 13:
+
+                lunch_end = current_time + 1
+
+                l_start_h = int(current_time)
+                l_end_h = int(lunch_end)
+
+                day_plan.append({
+                    "type": "lunch",
+                    "time": f"{l_start_h:02d}:00 - {l_end_h:02d}:00"
+                })
+
+                current_time = lunch_end
+
+            subject_index += 1
 
         if not day_plan:
             break
@@ -257,16 +307,26 @@ def main_app():
 
             for task in day["tasks"]:
 
-                st.markdown(
-                    f"### ⏰ {task['time']} — **{task['subject']}**"
-                )
+                if task["type"] == "study":
 
-                with st.expander("Topics / Content"):
+                    st.markdown(
+                        f"### 📖 {task['time']} — **{task['subject']}**"
+                    )
 
-                    sentences = task["content"].split(". ")
+                    with st.expander("Topics / Content"):
 
-                    for s in sentences[:8]:
-                        st.write("•", s.strip())
+                        sentences = task["content"].split(". ")
+
+                        for s in sentences[:8]:
+                            st.write("•", s.strip())
+
+                elif task["type"] == "break":
+
+                    st.markdown(f"☕ **Break:** {task['time']}")
+
+                elif task["type"] == "lunch":
+
+                    st.markdown(f"🍽 **Lunch Break:** {task['time']}")
 
             st.markdown("---")
 
