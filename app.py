@@ -56,7 +56,7 @@ def send_reset_email(to_email, token):
     msg["To"] = to_email
 
     msg.set_content(f"""
-Click the link below to reset your password:
+Click below to reset your password:
 
 {reset_link}
 """)
@@ -120,7 +120,6 @@ def generate_schedule(subject_chunks, hours_per_day):
     studied_hours = 0
     subject_index = 0
 
-    # Breakfast
     schedule.append({
         "type": "meal",
         "time": "08:00 - 08:30",
@@ -158,7 +157,6 @@ def generate_schedule(subject_chunks, hours_per_day):
         if studied_hours >= hours_per_day:
             break
 
-        # Tea break
         break_end = current_time + BREAK_TIME
 
         b_start_h = int(current_time)
@@ -175,7 +173,6 @@ def generate_schedule(subject_chunks, hours_per_day):
 
         current_time = break_end
 
-        # Lunch
         if 12 <= current_time <= 13:
 
             schedule.append({
@@ -188,7 +185,6 @@ def generate_schedule(subject_chunks, hours_per_day):
 
         subject_index += 1
 
-    # Dinner
     schedule.append({
         "type": "meal",
         "time": "19:00 - 20:00",
@@ -229,6 +225,11 @@ def main_app():
         accept_multiple_files=True
     )
 
+    exam_date = st.date_input(
+        "Exam Date",
+        min_value=date.today()
+    )
+
     hours_per_day = st.slider(
         "Study hours today",
         1.0,
@@ -236,6 +237,12 @@ def main_app():
         4.0,
         0.5
     )
+
+    if exam_date:
+
+        days_left = (exam_date - date.today()).days
+
+        st.info(f"📅 Days remaining for exam: **{days_left} days**")
 
     if st.button("Generate Study Plan"):
 
